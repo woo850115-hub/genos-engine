@@ -1,0 +1,106 @@
+login:
+  welcome: |
+    GenOS tbaMUD-KR에 오신 것을 환영합니다!
+    이름을 입력해주세요:
+  password_prompt: "비밀번호를 입력해주세요: "
+  new_character: "새로운 모험가이시군요! 비밀번호를 설정해주세요: "
+  confirm_password: "비밀번호를 다시 입력해주세요: "
+  password_mismatch: "비밀번호가 일치하지 않습니다. 다시 시도해주세요."
+  invalid_password: "비밀번호가 틀렸습니다."
+  select_sex: |
+    성별을 선택해주세요:
+    [1] 남성
+    [2] 여성
+    [3] 중성
+  select_class: |
+    직업을 선택해주세요:
+    [1] 마법사 (Magic User)
+    [2] 성직자 (Cleric)
+    [3] 도적 (Thief)
+    [4] 전사 (Warrior)
+  invalid_choice: "잘못된 선택입니다. 다시 입력해주세요."
+  motd: "오늘의 소식을 확인하세요."
+  entering_game: "{name}님이 게임에 입장합니다."
+
+system:
+  shutdown_warning: "서버가 {seconds}초 후 종료됩니다!"
+  shutdown_now: "서버가 종료됩니다. 안녕히 가세요."
+  save_ok: "저장되었습니다."
+  reconnect: "재접속되었습니다."
+  already_playing: "이미 접속 중인 캐릭터입니다."
+
+movement:
+  no_exit: "그쪽으로는 갈 수 없습니다."
+  door_closed: "문이 닫혀있습니다."
+  door_locked: "문이 잠겨있습니다."
+  too_heavy: "짐이 너무 무겁습니다."
+
+combat:
+  you_hit: "{weapon}(으)로 {target}에게 {damage} 데미지를 입혔습니다."
+  you_miss: "{target}에 대한 공격이 빗나갔습니다."
+  hit_you: "{attacker}이(가) {weapon}(으)로 당신에게 {damage} 데미지를 입혔습니다."
+  you_die: "당신은 사망했습니다!"
+  target_dies: "{target}이(가) 쓰러졌습니다!"
+  exp_gained: "경험치 {exp}을(를) 획득했습니다."
+
+items:
+  get_item: "{item}을(를) 주웠습니다."
+  drop_item: "{item}을(를) 버렸습니다."
+  wear_item: "{item}을(를) 착용했습니다."
+  remove_item: "{item}을(를) 벗었습니다."
+  not_found: "그런 것은 여기에 없습니다."
+  inventory_full: "더 이상 들 수 없습니다."
+
+communication:
+  say: "{name}이(가) 말합니다, '{message}'"
+  tell: "{name}이(가) 당신에게 귓속말합니다, '{message}'"
+  shout: "{name}이(가) 외칩니다, '{message}'"
+  whisper: "{name}이(가) 당신에게 속삭입니다, '{message}'"
+  not_found_target: "그런 사람을 찾을 수 없습니다."
+
+shop:
+  not_in_shop: "여기에는 상점이 없습니다."
+  closed: "지금은 영업시간이 아닙니다."
+  what_buy: "뭘 사시겠습니까?"
+  what_sell: "뭘 파시겠습니까?"
+  bought: "{item}을(를) {price} 골드에 구입했습니다."
+  sold: "{item}을(를) {price} 골드에 판매했습니다."
+  not_enough_gold: "돈이 부족합니다."
+  no_such_item: "그런 물건은 없습니다."
+  no_have_item: "그런 물건을 가지고 있지 않습니다."
+
+admin:
+  no_permission: "권한이 없습니다."
+  goto_usage: "어디로 가시겠습니까? (goto <방번호>)"
+  load_usage: "사용법: load mob <vnum> / load obj <vnum>"
+  set_usage: "사용법: set <이름> <필드> <값>"
+  reload_done: "리로드 완료: {modules}"
+  reload_nothing: "리로드할 모듈이 없습니다."
+  shutdown_msg: "서버를 종료합니다..."
+  purge_done: "방이 정화되었습니다."
+  restore_done: "완전히 회복되었습니다!"
+
+spell:
+  no_spell: "그런 주문은 모릅니다."
+  no_target: "대상을 찾을 수 없습니다."
+  what_cast: "어떤 주문을 시전하시겠습니까?"
+  not_enough_mana: "마나가 부족합니다."
+  level_too_low: "아직 그 주문을 시전할 수 없습니다."
+  word_of_recall: "몸이 가벼워지며 순간이동합니다!"
+
+position:
+  already_resting: "이미 쉬고 있습니다."
+  already_sitting: "이미 앉아 있습니다."
+  already_standing: "이미 서 있습니다."
+  already_sleeping: "이미 잠들어 있습니다."
+  cant_in_combat: "전투 중에는 할 수 없습니다!"
+  start_resting: "쉬기 시작합니다."
+  start_sitting: "앉았습니다."
+  start_standing: "일어섰습니다."
+  start_sleeping: "잠들기 시작합니다."
+
+error:
+  unknown_command: "무슨 말인지 모르겠습니다."
+  invalid_number: "올바른 숫자를 입력하세요."
+  not_found: "그런 것을 찾을 수 없습니다."
+  floating_void: "허공에 떠 있습니다..."

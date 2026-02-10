@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: genos
+      POSTGRES_PASSWORD: genos
+      POSTGRES_DB: genos_tbamud
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U genos"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  tbamud:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      GAME: tbamud
+    ports:
+      - "4000:4000"
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./games:/app/games
+      - ./data:/app/data
+      - ./config:/app/config
+
+volumes:
+  pgdata:

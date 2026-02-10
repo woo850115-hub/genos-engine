@@ -1,0 +1,35 @@
+game: tbamud
+name: "tbaMUD-KR"
+
+network:
+  telnet_host: "0.0.0.0"
+  telnet_port: 4000
+  api_host: "0.0.0.0"
+  api_port: 8080
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "genos"
+  password: "genos"
+  database: "genos_tbamud"
+  min_connections: 2
+  max_connections: 10
+
+world:
+  start_room: 3001
+  void_room: 0
+  immort_start_room: 1204
+  frozen_start_room: 1202
+
+engine:
+  tick_rate: 10          # Hz
+  save_interval: 300     # seconds (5 min)
+  max_players: 100
+  combat_round: 20       # ticks (2 sec)
+  shutdown_timeout: 30   # seconds
+
+dev:
+  hot_reload: true
+  debug: true
+  log_level: "DEBUG"
