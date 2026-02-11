@@ -169,6 +169,7 @@ class MobInstance:
     equipment: dict[int, ObjInstance] = field(default_factory=dict)
     affects: list[dict[str, Any]] = field(default_factory=list)
     skills: dict[int, int] = field(default_factory=dict)  # skill_id → proficiency
+    extensions: dict[str, Any] = field(default_factory=dict)  # game-specific data
     # Stats (str/int/wis/dex/con/cha)
     str: int = 13
     intel: int = 13
@@ -293,10 +294,10 @@ class World:
             exits = []
             for e in exits_data:
                 exits.append(Exit(
-                    direction=e.get("direction", 0),
-                    to_room=e.get("to_room", -1),
-                    keywords=e.get("keywords", ""),
-                    description=e.get("description", ""),
+                    direction=e.get("direction", e.get("dir", 0)),
+                    to_room=e.get("to_room", e.get("dest", -1)),
+                    keywords=e.get("keywords", e.get("keyword", "")),
+                    description=e.get("description", e.get("desc", "")),
                     door_flags=e.get("door_flags", 0),
                     key_vnum=e.get("key_vnum", -1),
                 ))

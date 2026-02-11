@@ -9,6 +9,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U genos"]
       interval: 5s
@@ -24,6 +25,24 @@ services:
     ports:
       - "4000:4000"
       - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./games:/app/games
+      - ./data:/app/data
+      - ./config:/app/config
+
+  10woongi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      GAME: 10woongi
+    ports:
+      - "4001:4001"
+      - "8081:8081"
     depends_on:
       postgres:
         condition: service_healthy

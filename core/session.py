@@ -54,8 +54,12 @@ class Session:
 
     async def run(self) -> None:
         """Main session loop — drives the state machine."""
-        # Set initial state (login)
-        self.state = GetNameState()
+        # Set initial state — plugin can override login flow
+        plugin = getattr(self.engine, "_plugin", None)
+        if plugin and hasattr(plugin, "get_initial_state"):
+            self.state = plugin.get_initial_state()
+        else:
+            self.state = GetNameState()
         await self.send_line(self._welcome_banner())
         await self.send(self.state.prompt())
 
@@ -141,6 +145,9 @@ class Session:
         await self.db.save_player(c.player_id, data)
 
     def _welcome_banner(self) -> str:
+        plugin = getattr(self.engine, "_plugin", None)
+        if plugin and hasattr(plugin, "welcome_banner"):
+            return plugin.welcome_banner()
         return (
             "\r\n{cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}\r\n"
             "   {bold}{yellow}GenOS tbaMUD-KR{reset}\r\n"

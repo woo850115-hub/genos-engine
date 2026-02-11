@@ -228,8 +228,9 @@ class Engine:
                 if any(r.startswith(f"games.{self.game_name}") for r in reloaded):
                     self._plugin.register_commands(self)
 
-            # Combat rounds (every 2 seconds at 10Hz = every 20 ticks)
-            if self._tick % 20 == 0:
+            # Combat rounds (configurable: 20 ticks=2sec for tbaMUD, 10 ticks=1sec for 10woongi)
+            combat_interval = self.config.get("engine", {}).get("combat_round", 20)
+            if self._tick % combat_interval == 0:
                 await self._combat_round()
 
             # Affect ticks (every 75 seconds ≈ 1 "MUD hour" at 10Hz)
@@ -265,6 +266,12 @@ class Engine:
 
     async def _combat_round(self) -> None:
         """Process one combat round for all fighting characters."""
+        # Plugin can override entire combat round
+        plugin = getattr(self, "_plugin", None)
+        if plugin and hasattr(plugin, "combat_round"):
+            await plugin.combat_round(self)
+            return
+
         from games.tbamud.combat.thac0 import perform_attack, extra_attacks
         from games.tbamud.combat.death import handle_death
         from games.tbamud.level import check_level_up, do_level_up
@@ -313,6 +320,12 @@ class Engine:
 
     async def _tick_affects(self) -> None:
         """Tick down affects for all characters."""
+        # Plugin can override affect ticking
+        plugin = getattr(self, "_plugin", None)
+        if plugin and hasattr(plugin, "tick_affects"):
+            await plugin.tick_affects(self)
+            return
+
         from games.tbamud.combat.spells import tick_affects
 
         for room in self.world.rooms.values():

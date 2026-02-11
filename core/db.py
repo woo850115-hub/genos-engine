@@ -109,6 +109,7 @@ class Database:
                     title           TEXT NOT NULL DEFAULT '',
                     description     TEXT NOT NULL DEFAULT '',
                     flags           JSONB NOT NULL DEFAULT '[]',
+                    extensions      JSONB NOT NULL DEFAULT '{}',
                     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     last_login      TIMESTAMPTZ
                 )
