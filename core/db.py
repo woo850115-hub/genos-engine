@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -25,9 +26,10 @@ class Database:
         return self._pool
 
     async def connect(self) -> None:
+        host = os.environ.get("DB_HOST", self._config["host"])
         dsn = (
             f"postgresql://{self._config['user']}:{self._config['password']}"
-            f"@{self._config['host']}:{self._config['port']}"
+            f"@{host}:{self._config['port']}"
             f"/{self._config['database']}"
         )
         self._pool = await asyncpg.create_pool(
@@ -44,7 +46,7 @@ class Database:
             log.info("Database pool closed")
 
     async def auto_init(self, data_dir: Path) -> None:
-        """Auto-initialize DB if rooms table doesn't exist."""
+        """Auto-initialize DB if rooms table doesn't exist or is empty."""
         async with self.pool.acquire() as conn:
             exists = await conn.fetchval(
                 "SELECT EXISTS("
@@ -53,8 +55,16 @@ class Database:
                 ")"
             )
             if exists:
-                log.info("Database already initialized")
-                return
+                count = await conn.fetchval("SELECT COUNT(*) FROM rooms")
+                if count and count > 0:
+                    log.info("Database already initialized (%d rooms)", count)
+                    return
+                # Tables exist but empty (partial init) — drop and recreate
+                log.warning("Tables exist but rooms empty, dropping schema...")
+                await conn.execute(
+                    "DROP SCHEMA public CASCADE; "
+                    "CREATE SCHEMA public;"
+                )
 
             log.info("Initializing database from schema + seed data...")
             schema_path = data_dir / "sql" / "schema.sql"

@@ -22,6 +22,7 @@ services:
       dockerfile: Dockerfile
     environment:
       GAME: tbamud
+      DB_HOST: postgres
     ports:
       - "4000:4000"
       - "8080:8080"
@@ -30,6 +31,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     volumes:
+      - ./core:/app/core
       - ./games:/app/games
       - ./data:/app/data
       - ./config:/app/config
@@ -40,6 +42,7 @@ services:
       dockerfile: Dockerfile
     environment:
       GAME: 10woongi
+      DB_HOST: postgres
     ports:
       - "4001:4001"
       - "8081:8081"
@@ -48,6 +51,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     volumes:
+      - ./core:/app/core
       - ./games:/app/games
       - ./data:/app/data
       - ./config:/app/config
