@@ -89,7 +89,6 @@ Config.limits = {
     ["reserved size"] = 0,
     ["hash table size"] = 29999,
     ["object table size"] = 1501,
-    ["maximum users"] = 50,
     ["evaluator stack size"] = 10000,
     ["compiler stack size"] = 200,
     ["maximum call depth"] = 30,
