@@ -602,3 +602,258 @@ class TestSimoonLogin:
         assert "전사" in prompt
         assert "마법사" not in prompt
         assert "소환사" not in prompt
+
+
+# ── New CommandContext method tests ─────────────────────────
+
+
+class TestSimoonNewMethods:
+    """Tests for newly added CommandContext methods used by Simoon/3eyes."""
+
+    @pytest.mark.asyncio
+    async def test_find_inv_item(self):
+        eng = _make_engine()
+        ch = _player(level=10, class_id=0, room_vnum=3094)
+        from core.world import ItemProto, ObjInstance, _next_id
+        proto = ItemProto(
+            vnum=100, keywords="검 sword", short_desc="날카로운 검",
+            long_desc="", item_type="weapon", weight=5, cost=100, min_level=1,
+            wear_slots=[16], flags=[], values={}, affects=[],
+            extra_descs=[], scripts=[], ext={})
+        obj = ObjInstance(id=_next_id(), proto=proto, values={})
+        obj.carried_by = ch
+        ch.inventory.append(obj)
+        session = _make_session(eng, ch)
+        from core.lua_commands import CommandContext
+        ctx = CommandContext(session, eng)
+        found = ctx.find_inv_item("검")
+        assert found is obj
+
+    @pytest.mark.asyncio
+    async def test_find_equip_item(self):
+        eng = _make_engine()
+        ch = _player(level=10, class_id=0, room_vnum=3094)
+        from core.world import ItemProto, ObjInstance, _next_id
+        proto = ItemProto(
+            vnum=101, keywords="방패 shield", short_desc="튼튼한 방패",
+            long_desc="", item_type="armor", weight=10, cost=200, min_level=1,
+            wear_slots=[10], flags=[], values={}, affects=[],
+            extra_descs=[], scripts=[], ext={})
+        obj = ObjInstance(id=_next_id(), proto=proto, values={})
+        obj.worn_by = ch
+        ch.equipment[10] = obj
+        session = _make_session(eng, ch)
+        from core.lua_commands import CommandContext
+        ctx = CommandContext(session, eng)
+        found = ctx.find_equip_item("방패")
+        assert found is obj
+
+    @pytest.mark.asyncio
+    async def test_wear_and_remove_item(self):
+        eng = _make_engine()
+        ch = _player(level=10, class_id=0, room_vnum=3094)
+        from core.world import ItemProto, ObjInstance, _next_id
+        proto = ItemProto(
+            vnum=102, keywords="투구 helm", short_desc="철투구",
+            long_desc="", item_type="armor", weight=3, cost=50, min_level=1,
+            wear_slots=[0], flags=[], values={}, affects=[],
+            extra_descs=[], scripts=[], ext={})
+        obj = ObjInstance(id=_next_id(), proto=proto, values={})
+        obj.carried_by = ch
+        ch.inventory.append(obj)
+        session = _make_session(eng, ch)
+        from core.lua_commands import CommandContext
+        ctx = CommandContext(session, eng)
+        slot = ctx.wear_item(obj)
+        assert slot == 0
+        assert obj not in ch.inventory
+        assert ch.equipment.get(0) is obj
+        # Now remove
+        ctx.remove_item(obj)
+        assert obj in ch.inventory
+        assert 0 not in ch.equipment
+
+    @pytest.mark.asyncio
+    async def test_wield_item(self):
+        eng = _make_engine()
+        ch = _player(level=10, class_id=3, room_vnum=3094)
+        from core.world import ItemProto, ObjInstance, _next_id
+        proto = ItemProto(
+            vnum=103, keywords="검 sword", short_desc="강철검",
+            long_desc="", item_type="weapon", weight=5, cost=100, min_level=1,
+            wear_slots=[16], flags=[], values={}, affects=[],
+            extra_descs=[], scripts=[], ext={})
+        obj = ObjInstance(id=_next_id(), proto=proto, values={})
+        obj.carried_by = ch
+        ch.inventory.append(obj)
+        session = _make_session(eng, ch)
+        from core.lua_commands import CommandContext
+        ctx = CommandContext(session, eng)
+        slot = ctx.wield_item(obj)
+        assert slot == 16
+        assert ch.equipment.get(16) is obj
+
+    @pytest.mark.asyncio
+    async def test_get_toggles(self):
+        eng = _make_engine()
+        ch = _player(level=10, class_id=0, room_vnum=3094)
+        session = _make_session(eng, ch)
+        session.player_data["toggles"] = {"autoloot": True, "brief": False}
+        from core.lua_commands import CommandContext
+        ctx = CommandContext(session, eng)
+        toggles = ctx.get_toggles()
+        assert toggles["autoloot"] is True
+        assert toggles["brief"] is False
+
+    @pytest.mark.asyncio
+    async def test_toggle(self):
+        eng = _make_engine()
+        ch = _player(level=10, class_id=0, room_vnum=3094)
+        session = _make_session(eng, ch)
+        session.player_data["toggles"] = {}
+        from core.lua_commands import CommandContext
+        ctx = CommandContext(session, eng)
+        result = ctx.toggle("autoloot")
+        assert result is True
+        result2 = ctx.toggle("autoloot")
+        assert result2 is False
+
+    @pytest.mark.asyncio
+    async def test_get_affects(self):
+        eng = _make_engine()
+        ch = _player(level=10, class_id=0, room_vnum=3094)
+        ch.affects.append({"id": 42, "duration": 5})
+        session = _make_session(eng, ch)
+        from core.lua_commands import CommandContext
+        ctx = CommandContext(session, eng)
+        affects = ctx.get_affects(ch)
+        assert len(affects) == 1
+
+    @pytest.mark.asyncio
+    async def test_room_exists(self):
+        eng = _make_engine()
+        ch = _player(level=10, class_id=0, room_vnum=3094)
+        session = _make_session(eng, ch)
+        from core.lua_commands import CommandContext
+        ctx = CommandContext(session, eng)
+        assert ctx.room_exists(3093) is True
+        assert ctx.room_exists(99999) is False
+
+    @pytest.mark.asyncio
+    async def test_teleport_to(self):
+        eng = _make_engine()
+        ch = _player(level=10, class_id=0, room_vnum=3094)
+        session = _make_session(eng, ch)
+        eng.world.rooms[3094].characters.append(ch)
+        from core.lua_commands import CommandContext
+        ctx = CommandContext(session, eng)
+        ok = ctx.teleport_to(3093)
+        assert ok is True
+        assert ch.room_vnum == 3093
+
+    @pytest.mark.asyncio
+    async def test_peek_exit(self):
+        eng = _make_engine()
+        # Add exit from 3094 → 3093 (north)
+        from core.world import Exit
+        eng.world.rooms[3094].proto.exits.append(
+            Exit(direction=0, to_vnum=3093, keywords="", flags=[], key_vnum=-1))
+        ch = _player(level=10, class_id=0, room_vnum=3094)
+        session = _make_session(eng, ch)
+        eng.world.rooms[3094].characters.append(ch)
+        from core.lua_commands import CommandContext
+        ctx = CommandContext(session, eng)
+        dest = ctx.peek_exit("north")
+        assert dest == 3093
+
+    @pytest.mark.asyncio
+    async def test_steal_item(self):
+        eng = _make_engine()
+        ch = _player(level=10, class_id=2, room_vnum=3094)  # Thief
+        mob = _npc(level=5, hp=50, room_vnum=3094)
+        from core.world import ItemProto, ObjInstance, _next_id
+        proto = ItemProto(
+            vnum=200, keywords="보석 gem", short_desc="빛나는 보석",
+            long_desc="", item_type="treasure", weight=1, cost=500, min_level=1,
+            wear_slots=[], flags=[], values={}, affects=[],
+            extra_descs=[], scripts=[], ext={})
+        gem = ObjInstance(id=_next_id(), proto=proto, values={})
+        gem.carried_by = mob
+        mob.inventory.append(gem)
+        session = _make_session(eng, ch)
+        from core.lua_commands import CommandContext
+        ctx = CommandContext(session, eng)
+        stolen = ctx.steal_item(mob, "보석")
+        assert stolen is gem
+        assert gem in ch.inventory
+        assert gem not in mob.inventory
+
+    @pytest.mark.asyncio
+    async def test_execute_alias(self):
+        """Test ctx:execute() calls another Lua command."""
+        eng = _make_engine()
+        ch = _player(level=10, class_id=0, room_vnum=3094)
+        session = _make_session(eng, ch)
+        eng.world.rooms[3094].characters.append(ch)
+        # eq should call equipment
+        await eng.process_command(session, "eq")
+        msgs = _get_sent(session)
+        assert any("장비" in m or "비어있음" in m or "착용" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_simoon_score_shows_crystal(self):
+        """Score shows crystal/killmark from extensions."""
+        eng = _make_engine()
+        ch = _player(level=50, class_id=4, room_vnum=3094)
+        ch.extensions = {"crystal": 100, "killmark": 5}
+        session = _make_session(eng, ch)
+        eng.world.rooms[3094].characters.append(ch)
+        await eng.process_command(session, "score")
+        msgs = _get_sent(session)
+        assert any("크리스탈" in m for m in msgs)
+        assert any("킬마크" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_simoon_death_crystal_loss(self):
+        """Crystal loss on death for level 50+ player."""
+        random.seed(42)
+        w = _make_world()
+        eng = _make_engine(w)
+        ch = _player(level=60, class_id=3, room_vnum=3094, hp=0, max_hp=500)
+        ch.max_mana = 300
+        ch.max_move = 300
+        ch.gold = 100000
+        ch.extensions = {"crystal": 500}
+        session = _make_session(eng, ch)
+        w.rooms[3094].characters.append(ch)
+        from games.simoon.combat.death import handle_death
+        await handle_death(eng, ch, killer=None)
+        assert ch.extensions.get("crystal", 0) < 500
+
+    @pytest.mark.asyncio
+    async def test_simoon_thac0_pc_weapon_damage(self):
+        """PC damage uses weapon, not proto.damage_dice."""
+        random.seed(42)
+        w = _make_world()
+        eng = _make_engine(w)
+        ch = _player(level=10, class_id=3, room_vnum=3094)
+        # Give PC a weapon
+        from core.world import ItemProto, ObjInstance, _next_id
+        wpn_proto = ItemProto(
+            vnum=500, keywords="검 sword", short_desc="강철검",
+            long_desc="", item_type="weapon", weight=5, cost=100, min_level=1,
+            wear_slots=["wield"], flags=[], values={"damage": "3d6+5", "weapon_type": 3},
+            affects=[], extra_descs=[], scripts=[], ext={})
+        wpn = ObjInstance(id=_next_id(), proto=wpn_proto, values={})
+        ch.equipment[16] = wpn
+        mob = _npc(level=1, hp=10000, room_vnum=3094)
+        session = _make_session(eng, ch)
+        w.rooms[3094].characters.extend([ch, mob])
+        ch.fighting = mob
+        mob.fighting = ch
+        ch.position = 7
+        # Run combat round
+        await eng._lua_combat_round()
+        # Should have hit messages (not errors)
+        msgs = _get_sent(session)
+        assert any("빗나" in m or "입힙니다" in m for m in msgs)

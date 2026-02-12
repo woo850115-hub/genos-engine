@@ -66,7 +66,7 @@ register_command("follow", function(ctx, args)
         return
     end
     if target == ctx.char then
-        ctx:stop_following()
+        ctx:unfollow()
         ctx:send("혼자 다닙니다.")
         return
     end
@@ -75,15 +75,18 @@ register_command("follow", function(ctx, args)
 end, "따라가")
 
 register_command("group", function(ctx, args)
-    local members = ctx:get_group_members()
-    if not members or #members == 0 then
-        ctx:send("그룹에 속해 있지 않습니다.")
-        return
-    end
+    local ch = ctx.char
+    local followers = ctx:get_followers()
     local lines = {"{bright_cyan}-- 그룹원 --{reset}"}
-    for _, m in ipairs(members) do
-        lines[#lines + 1] = string.format("  %s (레벨 %d, HP %d/%d)",
-            m.name, m.level, m.hp, m.max_hp)
+    lines[#lines + 1] = string.format("  %s (레벨 %d, HP %d/%d)",
+        ch.name, ch.level, ch.hp, ch.max_hp)
+    if followers then
+        for i = 0, 50 do
+            local ok, m = pcall(function() return followers[i] end)
+            if not ok or not m then break end
+            lines[#lines + 1] = string.format("  %s (레벨 %d, HP %d/%d)",
+                m.name, m.level, m.hp, m.max_hp)
+        end
     end
     ctx:send(table.concat(lines, "\r\n"))
 end, "그룹")

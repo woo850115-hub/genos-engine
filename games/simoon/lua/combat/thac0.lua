@@ -80,8 +80,7 @@ local function roll_hit(ctx, attacker, defender)
     return roll >= needed - ac
 end
 
-local function roll_damage(ctx, attacker)
-    local dice_str = attacker.proto.damage_dice
+local function parse_dice(dice_str)
     local num, rest = dice_str:match("(%d+)d(.+)")
     num = tonumber(num) or 1
     local size, bonus
@@ -94,15 +93,47 @@ local function roll_damage(ctx, attacker)
         size = rest
         bonus = "0"
     end
-    size = tonumber(size) or 4
-    bonus = tonumber(bonus) or 0
+    return num, tonumber(size) or 4, tonumber(bonus) or 0
+end
 
-    local total = bonus
-    for i = 1, num do
-        total = total + ctx:random(1, size)
-    end
+local function roll_damage(ctx, attacker)
+    local total = 0
 
-    if not attacker.is_npc then
+    if attacker.is_npc then
+        -- NPC: parse damage_dice from proto
+        local dice_str = ""
+        local ok, dd = pcall(function() return attacker.proto.damage_dice end)
+        if ok and dd then dice_str = dd end
+        local ndice, sdice, pdice = 1, 4, 0
+        if dice_str ~= "" then
+            ndice, sdice, pdice = parse_dice(dice_str)
+        end
+        total = pdice
+        for i = 1, ndice do
+            total = total + ctx:random(1, math.max(1, sdice))
+        end
+    else
+        -- PC: weapon damage + STR bonus + damroll
+        local weapon_dmg = 0
+        local ok, weapon = pcall(function() return attacker.equipment["weapon"] end)
+        if not ok or not weapon then
+            -- Try numeric slot 16 (weapon)
+            ok, weapon = pcall(function() return attacker.equipment[16] end)
+        end
+        if ok and weapon and weapon.proto then
+            local dice_str = "1d4+0"
+            local ok2, dmg = pcall(function() return weapon.proto.values["damage"] end)
+            if ok2 and dmg then dice_str = dmg end
+            local ndice, sdice, pdice = parse_dice(dice_str)
+            weapon_dmg = pdice
+            for i = 1, ndice do
+                weapon_dmg = weapon_dmg + ctx:random(1, math.max(1, sdice))
+            end
+        else
+            -- Barehanded: level-based
+            weapon_dmg = ctx:random(1, 3) + math.floor(attacker.level / 10)
+        end
+        total = weapon_dmg
         total = total + (STR_TODAM[math.min(simoon_stat(attacker, "str", 13), 25)] or 0)
         total = total + (attacker.damroll or 0)
 

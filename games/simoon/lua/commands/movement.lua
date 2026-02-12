@@ -26,12 +26,18 @@ register_command("scan", function(ctx, args)
         local exit_room = ctx:peek_exit(dir)
         if exit_room then
             local chars = ctx:get_room_chars(exit_room)
-            if chars and #chars > 0 then
-                lines[#lines + 1] = "  " .. kr_dirs[i] .. "쪽:"
-                for _, ch in ipairs(chars) do
+            if chars then
+                local dir_found = false
+                for j = 0, 50 do
+                    local ok, ch = pcall(function() return chars[j] end)
+                    if not ok or not ch then break end
+                    if not dir_found then
+                        lines[#lines + 1] = "  " .. kr_dirs[i] .. "쪽:"
+                        dir_found = true
+                        found = true
+                    end
                     lines[#lines + 1] = "    " .. ch.name
                 end
-                found = true
             end
         end
     end

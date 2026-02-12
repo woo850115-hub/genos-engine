@@ -92,6 +92,41 @@ class CommandContext:
             return None
         return self._engine.world.get_room(int(vnum))
 
+    def room_exists(self, vnum: int) -> bool:
+        """Check if a room with this vnum exists."""
+        return self._engine.world.get_room(int(vnum)) is not None
+
+    def extract_char(self, char: Any) -> None:
+        """Remove a character from the world entirely."""
+        if not char:
+            return
+        room = self._engine.world.get_room(char.room_vnum)
+        if room and char in room.characters:
+            room.characters.remove(char)
+
+    def teleport_to(self, vnum: int) -> bool:
+        """Move current character to room vnum. Returns success."""
+        v = int(vnum)
+        if not self.room_exists(v):
+            return False
+        self.move_to(v)
+        return True
+
+    def load_mob(self, vnum: int) -> Any:
+        """Create mob in current room. Alias for create_mob."""
+        char = self._session.character if self._session else None
+        if not char:
+            return None
+        return self.create_mob(int(vnum), char.room_vnum)
+
+    def load_obj(self, vnum: int) -> Any:
+        """Create obj and give to current char. Alias for create_obj + obj_to_char."""
+        char = self._session.character if self._session else None
+        obj = self.create_obj(int(vnum))
+        if obj and char:
+            self.obj_to_char(obj, char)
+        return obj
+
     def find_char(self, keyword: str) -> MobInstance | None:
         """Find a character in the current room by keyword."""
         char = self._session.character
@@ -880,6 +915,290 @@ class CommandContext:
                     return self._lua.table_from(info), mob
                 return info, mob
         return None, None
+
+    # ── Aliases for Simoon/3eyes Lua (map to existing methods) ────
+
+    def get_shop(self) -> Any:
+        """Alias: return shop info only (without keeper)."""
+        shop, keeper = self.find_shop()
+        return shop
+
+    def get_shop_items(self) -> Any:
+        """Return shop's selling items as list of obj instances."""
+        shop, keeper = self.find_shop()
+        if not shop:
+            return None
+        result = []
+        # Permanent stock items
+        try:
+            selling = shop["selling_items"] if isinstance(shop, dict) else shop.selling_items
+        except Exception:
+            selling = None
+        if selling:
+            try:
+                items_iter = selling.values() if hasattr(selling, "values") else selling
+            except Exception:
+                items_iter = []
+            for vnum in items_iter:
+                obj = self._engine.world.create_obj(int(vnum))
+                if obj:
+                    result.append(obj)
+        # Keeper's inventory
+        if keeper:
+            for obj in keeper.inventory:
+                result.append(obj)
+        return self._to_lua_table(result) if result else None
+
+    def get_buy_price(self, item: Any) -> int:
+        """Calculate buy price for an item."""
+        shop, _ = self.find_shop()
+        if not shop or not item or not item.proto:
+            return 0
+        try:
+            profit = shop["profit_buy"] if isinstance(shop, dict) else shop.profit_buy
+        except Exception:
+            profit = 1.0
+        return max(1, int(item.proto.cost * profit))
+
+    def get_sell_price(self, item: Any) -> int:
+        """Calculate sell price for an item."""
+        shop, _ = self.find_shop()
+        if not shop or not item or not item.proto:
+            return 0
+        try:
+            profit = shop["profit_sell"] if isinstance(shop, dict) else shop.profit_sell
+        except Exception:
+            profit = 1.0
+        return max(1, int(item.proto.cost * profit))
+
+    def buy_item(self, item: Any) -> Any:
+        """Create a copy of item and give to current char."""
+        char = self._session.character if self._session else None
+        if not char or not item or not item.proto:
+            return None
+        obj = self._engine.world.create_obj(item.proto.vnum)
+        if obj:
+            self.obj_to_char(obj, char)
+        return obj
+
+    def sell_item(self, item: Any) -> None:
+        """Remove item from current char's inventory."""
+        if item:
+            self.obj_from_char(item)
+
+    def find_inv_item(self, keyword: str) -> Any:
+        """Alias for find_obj_inv."""
+        return self.find_obj_inv(str(keyword))
+
+    def find_equip_item(self, keyword: str) -> Any:
+        """Alias for find_obj_equip."""
+        return self.find_obj_equip(str(keyword))
+
+    def wear_item(self, item: Any) -> int | None:
+        """Equip an item to its appropriate slot. Returns slot or None."""
+        char = self._session.character if self._session else None
+        if not char or not item or not item.proto:
+            return None
+        # Find first valid wear slot
+        slots = item.proto.wear_slots or []
+        if not slots:
+            self.send("그것은 착용할 수 없습니다.")
+            return None
+        target_slot = None
+        for slot in slots:
+            key = slot if isinstance(slot, int) else str(slot)
+            if key not in char.equipment:
+                target_slot = key
+                break
+        if target_slot is None:
+            target_slot = slots[0] if isinstance(slots[0], int) else str(slots[0])
+            # Unequip existing
+            old = char.equipment.pop(target_slot, None)
+            if old:
+                old.worn_by = None
+                old.wear_slot = ""
+                char.inventory.append(old)
+        # Remove from inventory and equip
+        if item in char.inventory:
+            char.inventory.remove(item)
+        item.carried_by = None
+        item.worn_by = char
+        item.wear_slot = str(target_slot)
+        char.equipment[target_slot] = item
+        self.recalc_equip()
+        return target_slot
+
+    def wield_item(self, item: Any) -> int | None:
+        """Equip an item to weapon slot (16 or 'weapon')."""
+        char = self._session.character if self._session else None
+        if not char or not item:
+            return None
+        slot = 16
+        old = char.equipment.pop(slot, None)
+        if old:
+            old.worn_by = None
+            old.wear_slot = ""
+            char.inventory.append(old)
+        if item in char.inventory:
+            char.inventory.remove(item)
+        item.carried_by = None
+        item.worn_by = char
+        item.wear_slot = str(slot)
+        char.equipment[slot] = item
+        self.recalc_equip()
+        return slot
+
+    def remove_item(self, item: Any) -> None:
+        """Unequip an item from char."""
+        char = self._session.character if self._session else None
+        if not char or not item:
+            return
+        # Find which slot it's in
+        slot_found = None
+        for slot, eq_obj in char.equipment.items():
+            if eq_obj is item:
+                slot_found = slot
+                break
+        if slot_found is not None:
+            char.equipment.pop(slot_found, None)
+        item.worn_by = None
+        item.wear_slot = ""
+        item.carried_by = char
+        char.inventory.append(item)
+        self.recalc_equip()
+
+    def wear_all(self) -> None:
+        """Equip all wearable items from inventory."""
+        char = self._session.character if self._session else None
+        if not char:
+            return
+        to_wear = list(char.inventory)
+        for item in to_wear:
+            if item.proto and item.proto.wear_slots:
+                result = self.wear_item(item)
+                if result is not None:
+                    self.send(f"{item.name}을(를) 착용합니다.")
+
+    def peek_exit(self, direction: str) -> int | None:
+        """Check exit in direction, return destination room vnum or None."""
+        char = self._session.character if self._session else None
+        if not char:
+            return None
+        room = self._engine.world.get_room(char.room_vnum)
+        if not room:
+            return None
+        ext = self.find_exit(str(direction))
+        if ext:
+            return ext.to_vnum
+        return None
+
+    def get_room_chars(self, room_vnum: int) -> Any:
+        """Get characters in a specific room as Lua table."""
+        room = self._engine.world.get_room(int(room_vnum))
+        if not room:
+            return self._to_lua_table([])
+        return self._to_lua_table(list(room.characters))
+
+    def find_portal(self, keyword: str) -> int | None:
+        """Find a portal object in the room and return its destination vnum."""
+        char = self._session.character if self._session else None
+        if not char:
+            return None
+        room = self._engine.world.get_room(char.room_vnum)
+        if not room:
+            return None
+        kw = str(keyword).lower()
+        for obj in room.objects:
+            if obj.proto and kw in obj.proto.keywords.lower():
+                # Portal: values should have target room
+                dest = obj.values.get("target") or obj.values.get("destination")
+                if dest:
+                    return int(dest)
+        return None
+
+    def pick_lock(self, direction: str) -> bool:
+        """Attempt to unlock a door in the given direction."""
+        d = self.find_door(str(direction))
+        if d < 0:
+            return False
+        if self.is_door_locked(d):
+            self.set_door_state(d, closed=True, locked=False)
+            return True
+        elif self.is_door_closed(d):
+            self.set_door_state(d, closed=False)
+            return True
+        return False
+
+    def steal_item(self, target: Any, item_name: str) -> Any:
+        """Steal an item from target's inventory."""
+        if not target:
+            return None
+        kw = str(item_name).lower()
+        for obj in target.inventory:
+            if kw in obj.proto.keywords.lower():
+                target.inventory.remove(obj)
+                obj.carried_by = None
+                char = self._session.character
+                if char:
+                    obj.carried_by = char
+                    char.inventory.append(obj)
+                return obj
+        return None
+
+    def get_online_players(self) -> Any:
+        """Alias for get_players — returns online player sessions."""
+        return self.get_players()
+
+    def get_toggles(self) -> Any:
+        """Get player's toggle settings as dict."""
+        pd = self._session.player_data if self._session else {}
+        toggles = pd.get("toggles", {})
+        if self._lua:
+            return self._lua.table_from(toggles)
+        return toggles
+
+    def toggle(self, key: str) -> bool | None:
+        """Toggle a setting and return new value."""
+        pd = self._session.player_data if self._session else None
+        if not pd:
+            return None
+        toggles = pd.get("toggles", {})
+        k = str(key)
+        current = toggles.get(k)
+        if current is None:
+            # Only allow known toggles
+            known = {"autoloot", "autogold", "brief", "compact", "color", "nosummon"}
+            if k not in known:
+                return None
+            current = False
+        toggles[k] = not current
+        pd["toggles"] = toggles
+        return toggles[k]
+
+    def get_affects(self, target: Any) -> Any:
+        """Get target's affects as Lua table."""
+        if not target:
+            return self._to_lua_table([])
+        return self._to_lua_table(list(target.affects))
+
+    def reload_lua(self) -> None:
+        """Alias for defer_reload."""
+        self.defer_reload()
+
+    def shutdown(self) -> None:
+        """Alias for defer_shutdown."""
+        self.defer_shutdown()
+
+    def send_to_session(self, target_session: Any, msg: str) -> None:
+        """Send message to a specific session."""
+        if target_session:
+            self._messages.append((target_session, str(msg)))
+
+    def execute(self, cmd: str, args: str = "") -> None:
+        """Alias for call_command."""
+        self.call_command(str(cmd), str(args))
+
+    # ── Deferred actions (original) ────────────────────────────────
 
     def defer_force(self, target: Any, cmd: str) -> None:
         """Defer forcing a command on a target character."""

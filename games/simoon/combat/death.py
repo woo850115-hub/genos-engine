@@ -140,7 +140,7 @@ async def handle_death(engine: Engine, victim: MobInstance,
                 penalties.append(f"골드 -{gold_loss}")
 
                 # Crystal loss (stored in extensions)
-                ext = getattr(victim, "ext", {}) or {}
+                ext = getattr(victim, "extensions", {}) or {}
                 crystal = ext.get("crystal", 0)
                 if crystal > 0:
                     c_loss = random.randint(DEATH_CRYSTAL_LOSS_MIN, DEATH_CRYSTAL_LOSS_MAX)

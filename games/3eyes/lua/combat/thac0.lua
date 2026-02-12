@@ -73,10 +73,17 @@ local function calc_damage(attacker, defender)
         -- PC: weapon damage + STR bonus + proficiency/10
         local weapon_dmg = 0
         local ok, weapon = pcall(function() return attacker.equipment["weapon"] end)
-        if ok and weapon then
-            local wnd = weapon.ndice or 1
-            local wsd = weapon.sdice or 4
-            local wpd = weapon.pdice or 0
+        if not ok or not weapon then
+            ok, weapon = pcall(function() return attacker.equipment[16] end)
+        end
+        if ok and weapon and weapon.proto then
+            local dice_str = "1d4+0"
+            local ok2, dmg = pcall(function() return weapon.proto.values["damage"] end)
+            if ok2 and dmg then dice_str = dmg end
+            local n, s, p = dice_str:match("(%d+)d(%d+)%+(-?%d+)")
+            local wnd = tonumber(n) or 1
+            local wsd = tonumber(s) or 4
+            local wpd = tonumber(p) or 0
             weapon_dmg = wpd
             for i = 1, wnd do
                 weapon_dmg = weapon_dmg + math.random(1, math.max(1, wsd))

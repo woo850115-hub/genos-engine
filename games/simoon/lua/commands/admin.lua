@@ -97,8 +97,8 @@ register_command("advance", function(ctx, args)
         return
     end
     local new_level = tonumber(level_str)
-    target.character.level = new_level
-    ctx:send(target.character.name .. "의 레벨이 " .. new_level .. "로 설정되었습니다.")
+    target.level = new_level
+    ctx:send(target.name .. "의 레벨이 " .. new_level .. "로 설정되었습니다.")
 end, nil)
 
 register_command("shutdown", function(ctx, args)

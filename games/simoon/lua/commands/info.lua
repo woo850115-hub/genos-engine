@@ -20,8 +20,8 @@ register_command("score", function(ctx, args)
         "  경험치: " .. ch.experience,
     }
 
-    -- Crystal/killmark (Simoon-specific, stored in ext)
-    local ok, ext = pcall(function() return ch.ext end)
+    -- Crystal/killmark (Simoon-specific, stored in extensions)
+    local ok, ext = pcall(function() return ch.extensions end)
     if ok and ext then
         local crystal = 0
         local killmark = 0
@@ -68,17 +68,14 @@ register_command("who", function(ctx, args)
     }
     local count = 0
     for i = 0, 200 do
-        local ok, p = pcall(function() return players[i] end)
-        if not ok or not p then break end
-        local ch = p.character
-        if ch then
-            local cls = SIMOON_CLASSES[ch.class_id] or "?"
-            local race = SIMOON_RACES[ch.race_id or 0] or "?"
-            lines[#lines + 1] = string.format(
-                "  [%3d %s %s] %s",
-                ch.level, race, cls, ch.name)
-            count = count + 1
-        end
+        local ok, ch = pcall(function() return players[i] end)
+        if not ok or not ch then break end
+        local cls = SIMOON_CLASSES[ch.class_id] or "?"
+        local race = SIMOON_RACES[ch.race_id or 0] or "?"
+        lines[#lines + 1] = string.format(
+            "  [%3d %s %s] %s",
+            ch.level, race, cls, ch.name)
+        count = count + 1
     end
     lines[#lines + 1] = "{cyan}━━━━━━ 총 " .. count .. "명 접속 중 ━━━━━━{reset}"
     ctx:send(table.concat(lines, "\r\n"))
@@ -138,21 +135,16 @@ end, nil)
 register_command("affects", function(ctx, args)
     local ch = ctx.char
     if not ch then return end
-    local affects = ch.affects
+    local affects = ctx:get_affects(ch)
     if not affects or #affects == 0 then
         ctx:send("현재 적용 중인 효과가 없습니다.")
         return
     end
     local lines = {"{bright_cyan}-- 적용 효과 --{reset}"}
-    for i = 0, 50 do
-        local ok, a = pcall(function() return affects[i] end)
-        if not ok or not a then break end
-        local ok2, sid = pcall(function() return a.spell_id end)
-        local ok3, dur = pcall(function() return a.duration end)
-        if ok2 and sid then
-            lines[#lines + 1] = "  효과 #" .. sid ..
-                (ok3 and dur and (" — " .. dur .. "틱 남음") or "")
-        end
+    for _, a in ipairs(affects) do
+        local sid = a.spell_id or a.id or "?"
+        local dur = a.duration or 0
+        lines[#lines + 1] = "  효과 #" .. sid .. " — " .. dur .. "틱 남음"
     end
     ctx:send(table.concat(lines, "\r\n"))
 end, "효과")

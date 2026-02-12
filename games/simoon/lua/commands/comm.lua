@@ -41,8 +41,8 @@ register_command("gossip", function(ctx, args)
         for i = 0, 200 do
             local ok, p = pcall(function() return players[i] end)
             if not ok or not p then break end
-            if p ~= ctx.session then
-                ctx:send_to_session(p, "\r\n{yellow}[잡담] " .. ch.name .. ": " .. args .. "{reset}")
+            if p ~= ch and p.session then
+                ctx:send_to(p, "\r\n{yellow}[잡담] " .. ch.name .. ": " .. args .. "{reset}")
             end
         end
     end

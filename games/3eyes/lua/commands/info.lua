@@ -51,15 +51,20 @@ end, "건강")
 register_command("who", function(ctx, args)
     local players = ctx:get_online_players()
     local lines = {"{bright_cyan}━━━━━━━━━━ 접속자 목록 ━━━━━━━━━━{reset}"}
-    if not players or #players == 0 then
-        lines[#lines + 1] = "  아무도 접속해 있지 않습니다."
-    else
-        for _, p in ipairs(players) do
+    local count = 0
+    if players then
+        for i = 0, 200 do
+            local ok, p = pcall(function() return players[i] end)
+            if not ok or not p then break end
             local class_name = THREEEYES_CLASSES[p.class_id] or "?"
             local race_name = THREEEYES_RACES[p.race_id] or "?"
             lines[#lines + 1] = string.format("  [%3d %s %s] %s",
                 p.level, race_name, class_name, p.name)
+            count = count + 1
         end
+    end
+    if count == 0 then
+        lines[#lines + 1] = "  아무도 접속해 있지 않습니다."
     end
     lines[#lines + 1] = "{bright_cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}"
     ctx:send(table.concat(lines, "\r\n"))
@@ -94,13 +99,23 @@ end, "장비")
 register_command("affects", function(ctx, args)
     local ch = ctx.char
     local affects = ctx:get_affects(ch)
-    if not affects or #affects == 0 then
+    if not affects then
         ctx:send("현재 어떤 효과도 받고 있지 않습니다.")
         return
     end
     local lines = {"{bright_cyan}-- 현재 효과 --{reset}"}
-    for _, aff in ipairs(affects) do
-        lines[#lines + 1] = string.format("  %s (남은 시간: %d)", aff.name or "?", aff.duration or 0)
+    local found = false
+    for i = 0, 50 do
+        local ok, aff = pcall(function() return affects[i] end)
+        if not ok or not aff then break end
+        local aid = aff.spell_id or aff.id or "?"
+        local dur = aff.duration or 0
+        lines[#lines + 1] = string.format("  효과 #%s (남은 시간: %d)", tostring(aid), dur)
+        found = true
+    end
+    if not found then
+        ctx:send("현재 어떤 효과도 받고 있지 않습니다.")
+        return
     end
     ctx:send(table.concat(lines, "\r\n"))
 end, "효과")
@@ -138,10 +153,17 @@ end, "날씨")
 
 register_command("toggle", function(ctx, args)
     if not args or args == "" then
-        local toggles = ctx:get_toggles()
+        local toggles = ctx:get_player_data("toggles") or {}
         local lines = {"{bright_cyan}-- 설정 --{reset}"}
-        for k, v in pairs(toggles) do
-            lines[#lines + 1] = string.format("  %-12s : %s", k, v and "켜짐" or "꺼짐")
+        local found = false
+        local ok2, iter = pcall(function()
+            for k, v in pairs(toggles) do
+                lines[#lines + 1] = string.format("  %-12s : %s", k, v and "켜짐" or "꺼짐")
+                found = true
+            end
+        end)
+        if not found then
+            lines[#lines + 1] = "  설정된 토글이 없습니다."
         end
         ctx:send(table.concat(lines, "\r\n"))
         return
