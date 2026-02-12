@@ -17,7 +17,7 @@ class TestExitKeyCompat:
         exit_data = {"direction": 0, "to_room": 3002, "keywords": "door", "description": "A door."}
         ex = Exit(
             direction=exit_data.get("direction", exit_data.get("dir", 0)),
-            to_room=exit_data.get("to_room", exit_data.get("dest", -1)),
+            to_vnum=exit_data.get("to_room", exit_data.get("dest", -1)),
             keywords=exit_data.get("keywords", exit_data.get("keyword", "")),
             description=exit_data.get("description", exit_data.get("desc", "")),
         )
@@ -31,7 +31,7 @@ class TestExitKeyCompat:
         exit_data = {"dir": 3, "dest": 964618230, "desc": "", "keyword": ""}
         ex = Exit(
             direction=exit_data.get("direction", exit_data.get("dir", 0)),
-            to_room=exit_data.get("to_room", exit_data.get("dest", -1)),
+            to_vnum=exit_data.get("to_room", exit_data.get("dest", -1)),
             keywords=exit_data.get("keywords", exit_data.get("keyword", "")),
             description=exit_data.get("description", exit_data.get("desc", "")),
         )
@@ -45,7 +45,7 @@ class TestExitKeyCompat:
         exit_data = {"direction": 1, "dest": 12345, "keywords": "gate"}
         ex = Exit(
             direction=exit_data.get("direction", exit_data.get("dir", 0)),
-            to_room=exit_data.get("to_room", exit_data.get("dest", -1)),
+            to_vnum=exit_data.get("to_room", exit_data.get("dest", -1)),
             keywords=exit_data.get("keywords", exit_data.get("keyword", "")),
         )
         assert ex.direction == 1
@@ -62,9 +62,8 @@ class TestLargeVnumDict:
         proto = RoomProto(
             vnum=large_vnum, name="장백성 마을 광장",
             description="장백성의 마을 광장입니다.",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[], extra_descs=[], scripts=[], ext={})
         w.rooms[large_vnum] = Room(proto=proto)
         room = w.get_room(large_vnum)
         assert room is not None
@@ -76,20 +75,18 @@ class TestLargeVnumDict:
         w = World()
         large_vnum = 2000000000
         proto = MobProto(
-            vnum=large_vnum, keywords="용사", short_description="용사",
-            long_description="용사가 서 있습니다.", detailed_description="",
+            vnum=large_vnum, keywords="용사", short_desc="용사",
+            long_desc="용사가 서 있습니다.", detail_desc="",
             level=10, hitroll=5, armor_class=50,
-            hp_dice="5d10+50", damage_dice="2d6+3",
+            max_hp=77, damage_dice="2d6+3",
             gold=100, experience=500,
-            action_flags=[], affect_flags=[], alignment=0, sex=1,
-            trigger_vnums=[],
-        )
+            act_flags=[], aff_flags=[], alignment=0, sex=1,
+            scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
         w.mob_protos[large_vnum] = proto
         room_proto = RoomProto(
             vnum=1, name="Test", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[], extra_descs=[], scripts=[], ext={})
         w.rooms[1] = Room(proto=room_proto)
         mob = w.create_mob(large_vnum, 1)
         assert mob is not None
@@ -101,11 +98,10 @@ class TestLargeVnumDict:
         large_vnum = 1800000000
         proto = ItemProto(
             vnum=large_vnum, keywords="검",
-            short_description="명검", long_description="명검이 놓여 있습니다.",
-            item_type=5, extra_flags=[], wear_flags=[16],
-            values=[0, 3, 8, 0], weight=5, cost=500, rent=10,
-            affects=[], extra_descs=[], trigger_vnums=[],
-        )
+            short_desc="명검", long_desc="명검이 놓여 있습니다.",
+            item_type="weapon", flags=[], wear_slots=["head"],
+            values={}, weight=5, cost=500,
+            affects=[], extra_descs=[], scripts=[], min_level=0, ext={})
         w.item_protos[large_vnum] = proto
         obj = w.create_obj(large_vnum)
         assert obj is not None
@@ -118,9 +114,8 @@ class TestLargeVnumDict:
             vnum = 1000000000 + i * 13579
             proto = RoomProto(
                 vnum=vnum, name=f"Room {i}", description="",
-                zone_number=0, sector_type=0, room_flags=[],
-                exits=[], extra_descs=[], trigger_vnums=[],
-            )
+                zone_vnum=0, sector=0, flags=[],
+                exits=[], extra_descs=[], scripts=[], ext={})
             w.rooms[vnum] = Room(proto=proto)
         assert len(w.rooms) == 1000
 
@@ -130,19 +125,17 @@ class TestLargeVnumDict:
         vnum_a = 1392841419
         vnum_b = 964618230
 
-        exit_ab = Exit(direction=0, to_room=vnum_b)
-        exit_ba = Exit(direction=2, to_room=vnum_a)
+        exit_ab = Exit(direction=0, to_vnum=vnum_b)
+        exit_ba = Exit(direction=2, to_vnum=vnum_a)
 
         room_a = RoomProto(
             vnum=vnum_a, name="A", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[exit_ab], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[exit_ab], extra_descs=[], scripts=[], ext={})
         room_b = RoomProto(
             vnum=vnum_b, name="B", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[exit_ba], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[exit_ba], extra_descs=[], scripts=[], ext={})
         w.rooms[vnum_a] = Room(proto=room_a)
         w.rooms[vnum_b] = Room(proto=room_b)
 
@@ -165,14 +158,13 @@ class TestDoorStatesWithLargeVnums:
     def test_door_init(self):
         """Door initialization works with large VNUMs."""
         ex = Exit(
-            direction=0, to_room=964618230,
-            door_flags=3, key_vnum=1500000000,
+            direction=0, to_vnum=964618230,
+            flags=("door", "closed"), key_vnum=1500000000,
         )
         proto = RoomProto(
             vnum=1392841419, name="Test", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[ex], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[ex], extra_descs=[], scripts=[], ext={})
         room = Room(proto=proto)
         room.init_doors()
         assert room.has_door(0)
@@ -180,12 +172,11 @@ class TestDoorStatesWithLargeVnums:
 
     def test_no_door(self):
         """Exits without doors don't create door_states."""
-        ex = Exit(direction=1, to_room=100000000, door_flags=0)
+        ex = Exit(direction=1, to_vnum=100000000, flags=())
         proto = RoomProto(
             vnum=200000000, name="Open", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[ex], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[ex], extra_descs=[], scripts=[], ext={})
         room = Room(proto=proto)
         room.init_doors()
         assert not room.has_door(1)
@@ -196,12 +187,11 @@ class TestExitDirection36:
 
     def test_exit_direction_beyond_5(self):
         """Directions > 5 are allowed and stored correctly."""
-        ex = Exit(direction=36, to_room=500000000, keywords="밖")
+        ex = Exit(direction=36, to_vnum=500000000, keywords="밖")
         proto = RoomProto(
             vnum=100000000, name="Room", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[ex], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[ex], extra_descs=[], scripts=[], ext={})
         room = Room(proto=proto)
         assert room.proto.exits[0].direction == 36
         assert room.proto.exits[0].keywords == "밖"
@@ -209,14 +199,13 @@ class TestExitDirection36:
     def test_multiple_custom_exits(self):
         """Multiple custom direction exits coexist."""
         exits = [
-            Exit(direction=0, to_room=100000001),
-            Exit(direction=36, to_room=100000002, keywords="밖"),
-            Exit(direction=37, to_room=100000003, keywords="안"),
+            Exit(direction=0, to_vnum=100000001),
+            Exit(direction=36, to_vnum=100000002, keywords="밖"),
+            Exit(direction=37, to_vnum=100000003, keywords="안"),
         ]
         proto = RoomProto(
             vnum=100000000, name="Hub", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=exits, extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=exits, extra_descs=[], scripts=[], ext={})
         room = Room(proto=proto)
         assert len(room.proto.exits) == 3

@@ -21,13 +21,12 @@ def _import_game():
 
 def _make_mob(vnum=100, level=10, hp=100, is_player=False, **kwargs):
     proto = MobProto(
-        vnum=vnum, keywords="test mob", short_description="테스트 몬스터",
-        long_description="테스트 몬스터가 서 있습니다.", detailed_description="",
+        vnum=vnum, keywords="test mob", short_desc="테스트 몬스터",
+        long_desc="테스트 몬스터가 서 있습니다.", detail_desc="",
         level=level, hitroll=kwargs.get("hitroll", 5), armor_class=50,
-        hp_dice=f"0d0+{hp}", damage_dice=kwargs.get("damage_dice", "2d6+3"),
+        max_hp=hp, damage_dice=kwargs.get("damage_dice", "2d6+3"),
         gold=kwargs.get("gold", 100), experience=kwargs.get("exp", 500),
-        action_flags=[], affect_flags=[], alignment=0, sex=1, trigger_vnums=[],
-    )
+        act_flags=[], aff_flags=[], alignment=0, sex=1, scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
     mob = MobInstance(
         id=vnum, proto=proto, room_vnum=1,
         hp=hp, max_hp=hp, mana=50, max_mana=50,
@@ -169,9 +168,8 @@ class TestHandleDeath:
         world = World()
         room_proto = RoomProto(
             vnum=1, name="Test", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[], extra_descs=[], scripts=[], ext={})
         world.rooms[1] = Room(proto=room_proto)
 
         victim = _make_mob(vnum=10, level=5, hp=0, gold=50)
@@ -198,9 +196,8 @@ class TestHandleDeath:
         for vnum in (1, 1854941986):
             room_proto = RoomProto(
                 vnum=vnum, name=f"Room {vnum}", description="",
-                zone_number=0, sector_type=0, room_flags=[],
-                exits=[], extra_descs=[], trigger_vnums=[],
-            )
+                zone_vnum=0, sector=0, flags=[],
+                exits=[], extra_descs=[], scripts=[], ext={})
             world.rooms[vnum] = Room(proto=room_proto)
 
         victim = _make_mob(vnum=30, is_player=True, name="희생자", hp=0)
@@ -231,9 +228,8 @@ class TestCombatRound:
         world = World()
         room_proto = RoomProto(
             vnum=1, name="Arena", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[], extra_descs=[], scripts=[], ext={})
         world.rooms[1] = Room(proto=room_proto)
 
         killer = _make_mob(vnum=1, level=10, hp=500)
@@ -270,9 +266,8 @@ class TestHealingTick:
         world = World()
         room_proto = RoomProto(
             vnum=1, name="Rest", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[], extra_descs=[], scripts=[], ext={})
         world.rooms[1] = Room(proto=room_proto)
 
         char = _make_mob(vnum=1, hp=50)
@@ -302,9 +297,8 @@ class TestHealingTick:
         world = World()
         room_proto = RoomProto(
             vnum=1, name="Rest", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[], extra_descs=[], scripts=[], ext={})
         world.rooms[1] = Room(proto=room_proto)
 
         char = _make_mob(vnum=1, hp=99)

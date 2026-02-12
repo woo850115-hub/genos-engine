@@ -89,14 +89,14 @@ async def do_where(session: Session, args: str) -> None:
     room = session.engine.world.get_room(char.room_vnum)
     if not room:
         return
-    zone = room.proto.zone_number
+    zone = room.proto.zone_vnum
 
     if not args:
         # Show all players in same zone
         lines = ["{bright_cyan}-- 주변 플레이어 --{reset}"]
         found = False
         for rm in session.engine.world.rooms.values():
-            if rm.proto.zone_number != zone:
+            if rm.proto.zone_vnum != zone:
                 continue
             for ch in rm.characters:
                 if not ch.is_npc and ch is not char:
@@ -110,7 +110,7 @@ async def do_where(session: Session, args: str) -> None:
         lines = [f"{{bright_cyan}}-- '{args}' 탐색 결과 --{{reset}}"]
         found = False
         for rm in session.engine.world.rooms.values():
-            if rm.proto.zone_number != zone:
+            if rm.proto.zone_vnum != zone:
                 continue
             for ch in rm.characters:
                 if target_kw in ch.proto.keywords.lower() or (ch.player_name and target_kw in ch.player_name.lower()):
@@ -338,7 +338,7 @@ async def do_inventory(session: Session, args: str) -> None:
     counts: Counter[str] = Counter()
     name_map: dict[str, str] = {}
     for obj in char.inventory:
-        desc = obj.proto.short_description
+        desc = obj.proto.short_desc
         counts[desc] += 1
         if desc not in name_map:
             mods = _obj_modifiers(obj)
@@ -367,7 +367,7 @@ async def do_equipment(session: Session, args: str) -> None:
         obj = char.equipment.get(pos)
         if obj:
             mods = _obj_modifiers(obj)
-            name = obj.proto.short_description
+            name = obj.proto.short_desc
             if mods:
                 name = f"{name} {mods}"
             await session.send_line(f"  {_WEAR_WHERE[pos]}{name}")

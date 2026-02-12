@@ -13,13 +13,12 @@ def _import_skills():
 
 def _make_char(level=10, class_id=1, sp=100, **kwargs):
     proto = MobProto(
-        vnum=-1, keywords="player", short_description="테스터",
-        long_description="", detailed_description="",
+        vnum=-1, keywords="player", short_desc="테스터",
+        long_desc="", detail_desc="",
         level=level, hitroll=5, armor_class=50,
-        hp_dice="0d0+100", damage_dice="1d6+2",
+        max_hp=100, damage_dice="1d6+2",
         gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=1, trigger_vnums=[],
-    )
+        act_flags=[], aff_flags=[], alignment=0, sex=1, scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
     char = MobInstance(
         id=1, proto=proto, room_vnum=1,
         hp=100, max_hp=100, mana=50, max_mana=50,

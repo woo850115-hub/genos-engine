@@ -20,11 +20,11 @@ from core.world import (
 
 def _char(level=10, class_id=0, mana=200, hp=100, max_hp=100):
     proto = MobProto(
-        vnum=-1, keywords="테스터", short_description="테스터",
-        long_description="", detailed_description="",
-        level=level, hitroll=0, armor_class=100, hp_dice="0d0+0",
+        vnum=-1, keywords="테스터", short_desc="테스터",
+        long_desc="", detail_desc="",
+        level=level, hitroll=0, armor_class=100, max_hp=1,
         damage_dice="1d4+0", gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
     )
     ch = MobInstance(
         id=1, proto=proto, room_vnum=1, hp=hp, max_hp=max_hp,
@@ -38,11 +38,11 @@ def _char(level=10, class_id=0, mana=200, hp=100, max_hp=100):
 
 def _npc(level=5, hp=50):
     proto = MobProto(
-        vnum=50, keywords="goblin 고블린", short_description="고블린",
-        long_description="", detailed_description="",
-        level=level, hitroll=0, armor_class=100, hp_dice="1d1+1",
+        vnum=50, keywords="goblin 고블린", short_desc="고블린",
+        long_desc="", detail_desc="",
+        level=level, hitroll=0, armor_class=100, max_hp=2,
         damage_dice="1d4+0", gold=10, experience=100,
-        action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
     )
     return MobInstance(
         id=50, proto=proto, room_vnum=1, hp=hp, max_hp=hp,
@@ -148,8 +148,8 @@ class TestWhereCommand:
         from games.tbamud.commands.info import do_where
         w = World()
         room = RoomProto(
-            vnum=1, name="방", description="", zone_number=0, sector_type=0,
-            room_flags=[], exits=[], extra_descs=[], trigger_vnums=[],
+            vnum=1, name="방", description="", zone_vnum=0, sector=0,
+            flags=[], exits=[], extra_descs=[], scripts=[],
         )
         w.rooms[1] = Room(proto=room)
 
@@ -167,11 +167,11 @@ class TestWhereCommand:
         session.send_line = AsyncMock()
         session.engine = eng
         proto = MobProto(
-            vnum=-1, keywords="t", short_description="t",
-            long_description="", detailed_description="",
-            level=1, hitroll=0, armor_class=100, hp_dice="0d0+0",
+            vnum=-1, keywords="t", short_desc="t",
+            long_desc="", detail_desc="",
+            level=1, hitroll=0, armor_class=100, max_hp=1,
             damage_dice="1d4+0", gold=0, experience=0,
-            action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+            act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
         )
         session.character = MobInstance(
             id=1, proto=proto, room_vnum=1, hp=20, max_hp=20,
@@ -190,8 +190,8 @@ class TestConsiderCommand:
         from games.tbamud.commands.info import do_consider
         w = World()
         room = RoomProto(
-            vnum=1, name="방", description="", zone_number=0, sector_type=0,
-            room_flags=[], exits=[], extra_descs=[], trigger_vnums=[],
+            vnum=1, name="방", description="", zone_vnum=0, sector=0,
+            flags=[], exits=[], extra_descs=[], scripts=[],
         )
         w.rooms[1] = Room(proto=room)
 
@@ -209,11 +209,11 @@ class TestConsiderCommand:
         session.send_line = AsyncMock()
         session.engine = eng
         proto = MobProto(
-            vnum=-1, keywords="t", short_description="t",
-            long_description="", detailed_description="",
-            level=20, hitroll=0, armor_class=100, hp_dice="0d0+0",
+            vnum=-1, keywords="t", short_desc="t",
+            long_desc="", detail_desc="",
+            level=20, hitroll=0, armor_class=100, max_hp=1,
             damage_dice="1d4+0", gold=0, experience=0,
-            action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+            act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
         )
         session.character = MobInstance(
             id=1, proto=proto, room_vnum=1, hp=100, max_hp=100,
@@ -223,11 +223,11 @@ class TestConsiderCommand:
 
         # Add weak mob
         mob_proto = MobProto(
-            vnum=50, keywords="rat 쥐", short_description="쥐",
-            long_description="", detailed_description="",
-            level=1, hitroll=0, armor_class=100, hp_dice="1d1+1",
+            vnum=50, keywords="rat 쥐", short_desc="쥐",
+            long_desc="", detail_desc="",
+            level=1, hitroll=0, armor_class=100, max_hp=2,
             damage_dice="1d1+0", gold=0, experience=10,
-            action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+            act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
         )
         mob = MobInstance(id=50, proto=mob_proto, room_vnum=1, hp=5, max_hp=5)
         w.rooms[1].characters.append(mob)

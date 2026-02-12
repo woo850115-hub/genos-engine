@@ -15,11 +15,11 @@ from core.world import MobInstance, MobProto, ObjInstance, ItemProto
 def _mob(level=5, hp=50, armor_class=100, hitroll=0, damage_dice="1d4+0",
          vnum=1, keywords="goblin 고블린", is_player=False, class_id=3):
     proto = MobProto(
-        vnum=vnum, keywords=keywords, short_description="고블린",
-        long_description="", detailed_description="",
+        vnum=vnum, keywords=keywords, short_desc="고블린",
+        long_desc="", detail_desc="",
         level=level, hitroll=hitroll, armor_class=armor_class,
-        hp_dice="1d1+1", damage_dice=damage_dice, gold=10, experience=100,
-        action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+        max_hp=2, damage_dice=damage_dice, gold=10, experience=100,
+        act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
     )
     mob = MobInstance(
         id=vnum, proto=proto, room_vnum=1, hp=hp, max_hp=hp,
@@ -58,12 +58,13 @@ class TestTHAC0Table:
 class TestComputeAC:
     def test_base_ac_npc(self):
         mob = _mob(armor_class=50)
+        mob.stats["dex"] = 13  # neutral dex (0 bonus)
         ac = compute_ac(mob)
-        assert ac <= 50  # dex might lower it
+        assert ac == 50  # dex 13 gives 0 bonus
 
     def test_dex_bonus(self):
         mob = _mob(armor_class=100)
-        mob.dex = 18
+        mob.stats["dex"] = 18
         ac = compute_ac(mob)
         assert ac < 100  # dex 18 gives -4
 
@@ -120,7 +121,7 @@ class TestRollDamage:
 
     def test_player_str_bonus(self):
         player = _mob(is_player=True, damage_dice="1d4+0")
-        player.str = 18
+        player.stats["str"] = 18
         random.seed(42)
         dmg = roll_damage(player)
         assert dmg >= 1 + STR_TODAM[18]

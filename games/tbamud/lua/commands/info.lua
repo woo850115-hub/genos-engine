@@ -97,9 +97,9 @@ end
 
 local function obj_modifiers(obj)
     local mods = {}
-    local flags = obj.proto.extra_flags
+    local flags = obj.proto.flags
     if not flags then return "" end
-    -- Iterate extra_flags list
+    -- Iterate flags list
     local ok, len = pcall(function() return #flags end)
     if not ok then return "" end
     for i = 0, len - 1 do
@@ -276,8 +276,10 @@ register_command("score", function(ctx, args)
     end
 
     -- Stats
-    ctx:send("힘: " .. ch.str .. "  민첩: " .. ch.dex .. "  체력: " .. ch.con ..
-             "  지능: " .. ch.intel .. "  지혜: " .. ch.wis .. "  매력: " .. ch.cha)
+    local stats = ch.stats or {}
+    local function gs(k) local ok, v = pcall(function() return stats[k] end); return ok and v or 0 end
+    ctx:send("힘: " .. gs("str") .. "  민첩: " .. gs("dex") .. "  체력: " .. gs("con") ..
+             "  지능: " .. gs("int") .. "  지혜: " .. gs("wis") .. "  매력: " .. gs("cha"))
 
     -- Hitroll / Damroll
     ctx:send("히트롤: " .. ch.hitroll .. "  댐롤: " .. ch.damroll)
@@ -393,7 +395,7 @@ register_command("inventory", function(ctx, args)
     local display_map = {}
     for i = 1, #inv do
         local obj = inv[i]
-        local desc = obj.proto.short_description
+        local desc = obj.proto.short_desc
         if not counts[desc] then
             counts[desc] = 0
             table.insert(order, desc)
@@ -440,7 +442,7 @@ register_command("equipment", function(ctx, args)
         local obj = equip[i].obj
         local label = WEAR_WHERE[slot] or "<어딘가에>          "
         local mods = obj_modifiers(obj)
-        local name = obj.proto.short_description
+        local name = obj.proto.short_desc
         if mods ~= "" then name = name .. " " .. mods end
         ctx:send("  " .. label .. name)
     end

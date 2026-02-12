@@ -23,22 +23,22 @@ def _make_multi_room_world():
     # Room 3001 → 3002 (east) → 3003 (south)
     r1 = RoomProto(
         vnum=3001, name="광장", description="넓은 광장입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[Exit(direction=1, to_room=3002)],  # east
+        zone_vnum=30, sector=0, flags=[],
+        exits=[Exit(direction=1, to_vnum=3002)],  # east
         extra_descs=[ExtraDesc("분수 fountain", "아름다운 분수가 있습니다.")],
-        trigger_vnums=[],
+        scripts=[],
     )
     r2 = RoomProto(
         vnum=3002, name="상점거리", description="상점이 늘어서 있습니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[Exit(direction=3, to_room=3001), Exit(direction=2, to_room=3003)],
-        extra_descs=[], trigger_vnums=[],
+        zone_vnum=30, sector=0, flags=[],
+        exits=[Exit(direction=3, to_vnum=3001), Exit(direction=2, to_vnum=3003)],
+        extra_descs=[], scripts=[],
     )
     r3 = RoomProto(
         vnum=3003, name="숲", description="어두운 숲입니다.",
-        zone_number=30, sector_type=3, room_flags=[],
-        exits=[Exit(direction=0, to_room=3002)],
-        extra_descs=[], trigger_vnums=[],
+        zone_vnum=30, sector=3, flags=[],
+        exits=[Exit(direction=0, to_vnum=3002)],
+        extra_descs=[], scripts=[],
     )
     w.rooms[3001] = Room(proto=r1)
     w.rooms[3002] = Room(proto=r2)
@@ -46,18 +46,18 @@ def _make_multi_room_world():
 
     # Mob protos
     guard = MobProto(
-        vnum=100, keywords="guard 경비병", short_description="경비병",
-        long_description="경비병이 서 있습니다.", detailed_description="강인한 경비병입니다.",
-        level=10, hitroll=5, armor_class=50, hp_dice="5d8+30",
+        vnum=100, keywords="guard 경비병", short_desc="경비병",
+        long_desc="경비병이 서 있습니다.", detail_desc="강인한 경비병입니다.",
+        level=10, hitroll=5, armor_class=50, max_hp=52,
         damage_dice="1d6+3", gold=50, experience=500,
-        action_flags=[], affect_flags=[], alignment=0, sex=1, trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=1, scripts=[],
     )
     wolf = MobProto(
-        vnum=101, keywords="wolf 늑대", short_description="사나운 늑대",
-        long_description="사나운 늑대가 으르렁거립니다.", detailed_description="",
-        level=5, hitroll=3, armor_class=80, hp_dice="3d6+10",
+        vnum=101, keywords="wolf 늑대", short_desc="사나운 늑대",
+        long_desc="사나운 늑대가 으르렁거립니다.", detail_desc="",
+        level=5, hitroll=3, armor_class=80, max_hp=20,
         damage_dice="1d4+2", gold=5, experience=100,
-        action_flags=[], affect_flags=[], alignment=-500, sex=0, trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=-500, sex=0, scripts=[],
     )
     w.mob_protos[100] = guard
     w.mob_protos[101] = wolf
@@ -74,16 +74,16 @@ def _make_multi_room_world():
 
     # Item protos
     sword = ItemProto(
-        vnum=200, keywords="sword 장검 검", short_description="멋진 장검",
-        long_description="멋진 장검이 바닥에 놓여 있습니다.", item_type=5,
-        extra_flags=[], wear_flags=[13], values=[0, 2, 6, 3],
-        weight=10, cost=100, rent=10, affects=[], extra_descs=[], trigger_vnums=[],
+        vnum=200, keywords="sword 장검 검", short_desc="멋진 장검",
+        long_desc="멋진 장검이 바닥에 놓여 있습니다.", item_type="weapon",
+        flags=[], wear_slots=["13"], values={},
+        weight=10, cost=100, affects=[], extra_descs=[], scripts=[],
     )
     potion = ItemProto(
-        vnum=201, keywords="potion 물약", short_description="빨간 물약",
-        long_description="빨간 물약이 놓여 있습니다.", item_type=10,
-        extra_flags=[], wear_flags=[], values=[10, 0, 0, 0],
-        weight=1, cost=50, rent=5, affects=[], extra_descs=[], trigger_vnums=[],
+        vnum=201, keywords="potion 물약", short_desc="빨간 물약",
+        long_desc="빨간 물약이 놓여 있습니다.", item_type="worn",
+        flags=[], wear_slots=[], values={},
+        weight=1, cost=50, affects=[], extra_descs=[], scripts=[],
     )
     w.item_protos[200] = sword
     w.item_protos[201] = potion
@@ -94,17 +94,17 @@ def _make_multi_room_world():
 
     # Shop (guard as shopkeeper)
     shop = Shop(
-        vnum=1, keeper_vnum=100, selling_items=[201],
-        profit_buy=1.5, profit_sell=0.5,
-        shop_room=3002, open1=0, close1=28, open2=0, close2=0,
+        vnum=1, keeper_vnum=100, room_vnum=3002,
+        inventory=[201],
+        buy_profit=1.5, sell_profit=0.5,
+        hours={"open1": 0, "close1": 28, "open2": 0, "close2": 0},
     )
     w.shops[100] = shop
 
     # Zone
     zone = Zone(
-        vnum=30, name="마을", builders="GenOS", lifespan=15,
-        bot=3001, top=3003, reset_mode=2, zone_flags=[],
-        reset_commands=[],
+        vnum=30, name="마을", builders="GenOS", lifespan=15, reset_mode=2, flags=[],
+        resets=[],
     )
     w.zones.append(zone)
 
@@ -173,11 +173,11 @@ def _make_player_session(eng, name="테스터", level=10, room=3001, gold=500):
     }
 
     proto = MobProto(
-        vnum=-1, keywords=name, short_description=name,
-        long_description="", detailed_description="",
-        level=level, hitroll=0, armor_class=100, hp_dice="0d0+0",
+        vnum=-1, keywords=name, short_desc=name,
+        long_desc="", detail_desc="",
+        level=level, hitroll=0, armor_class=100, max_hp=1,
         damage_dice="1d4+0", gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=1, trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=1, scripts=[],
     )
     char = MobInstance(
         id=1, proto=proto, room_vnum=room, hp=100, max_hp=100,

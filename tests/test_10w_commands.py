@@ -35,22 +35,20 @@ def _make_world_with_rooms(*vnums):
     for vnum in vnums:
         room_proto = RoomProto(
             vnum=vnum, name=f"Room{vnum}", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[], extra_descs=[], scripts=[], ext={})
         world.rooms[vnum] = Room(proto=room_proto)
     return world
 
 
 def _make_char(room_vnum=1, level=10, is_npc=False):
     proto = MobProto(
-        vnum=-1, keywords="player", short_description="테스터",
-        long_description="", detailed_description="",
+        vnum=-1, keywords="player", short_desc="테스터",
+        long_desc="", detail_desc="",
         level=level, hitroll=0, armor_class=50,
-        hp_dice="0d0+100", damage_dice="1d6+2",
+        max_hp=100, damage_dice="1d6+2",
         gold=500, experience=1000,
-        action_flags=[], affect_flags=[], alignment=0, sex=1, trigger_vnums=[],
-    )
+        act_flags=[], aff_flags=[], alignment=0, sex=1, scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
     char = MobInstance(
         id=_next_id(), proto=proto, room_vnum=room_vnum,
         hp=100, max_hp=100,
@@ -74,13 +72,12 @@ def _make_char(room_vnum=1, level=10, is_npc=False):
 
 def _make_npc(room_vnum=1, vnum=100, keywords="오크", level=5):
     proto = MobProto(
-        vnum=vnum, keywords=keywords, short_description=keywords,
-        long_description="", detailed_description="",
+        vnum=vnum, keywords=keywords, short_desc=keywords,
+        long_desc="", detail_desc="",
         level=level, hitroll=0, armor_class=50,
-        hp_dice="0d0+50", damage_dice="1d4+1",
+        max_hp=50, damage_dice="1d4+1",
         gold=100, experience=200,
-        action_flags=["ISNPC"], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
-    )
+        act_flags=["ISNPC"], aff_flags=[], alignment=0, sex=0, scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
     return MobInstance(
         id=_next_id(), proto=proto, room_vnum=room_vnum,
         hp=50, max_hp=50,

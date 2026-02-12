@@ -20,18 +20,18 @@ def _make_engine_with_players():
 
     room_proto = RoomProto(
         vnum=3001, name="광장", description="넓은 광장입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[], extra_descs=[], trigger_vnums=[],
+        zone_vnum=30, sector=0, flags=[],
+        exits=[], extra_descs=[], scripts=[],
     )
     eng.world.rooms[3001] = Room(proto=room_proto)
 
     # Add a player
     proto = MobProto(
-        vnum=-1, keywords="테스터", short_description="테스터",
-        long_description="", detailed_description="",
-        level=10, hitroll=0, armor_class=100, hp_dice="0d0+0",
+        vnum=-1, keywords="테스터", short_desc="테스터",
+        long_desc="", detail_desc="",
+        level=10, hitroll=0, armor_class=100, max_hp=1,
         damage_dice="1d4+0", gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
     )
     char = MobInstance(
         id=1, proto=proto, room_vnum=3001, hp=100, max_hp=100,

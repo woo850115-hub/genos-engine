@@ -94,14 +94,19 @@ class Session:
         # Create MobInstance for player
         from core.world import MobProto
         dummy_proto = MobProto(
-            vnum=-1, keywords=pd["name"], short_description=pd["name"],
-            long_description=f"{pd['name']}이(가) 서 있습니다.",
-            detailed_description="", level=pd.get("level", 1),
-            hitroll=pd.get("hitroll", 0), armor_class=pd.get("armor_class", 100),
-            hp_dice="0d0+0", damage_dice="1d4+0",
+            vnum=-1, keywords=pd["name"], short_desc=pd["name"],
+            long_desc=f"{pd['name']}이(가) 서 있습니다.",
+            detail_desc="", level=pd.get("level", 1),
+            max_hp=pd.get("max_hp", 20), max_mana=pd.get("max_mana", 100),
+            max_move=pd.get("max_move", 100),
+            armor_class=pd.get("armor_class", 100),
+            hitroll=pd.get("hitroll", 0), damroll=pd.get("damroll", 0),
+            damage_dice="1d4+0",
             gold=pd.get("gold", 0), experience=pd.get("experience", 0),
-            action_flags=[], affect_flags=[], alignment=pd.get("alignment", 0),
-            sex=pd.get("sex", 0), trigger_vnums=[],
+            alignment=pd.get("alignment", 0), sex=pd.get("sex", 0),
+            position=8, class_id=pd.get("class_id", 0), race_id=0,
+            act_flags=[], aff_flags=[], stats={}, skills={},
+            scripts=[], ext={},
         )
         char = MobInstance(
             id=_next_id(), proto=dummy_proto, room_vnum=start_room,

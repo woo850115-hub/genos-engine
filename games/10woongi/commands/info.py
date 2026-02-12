@@ -291,7 +291,7 @@ async def do_inventory(session: Any, args: str) -> None:
     # Group by short description
     counts: Counter[str] = Counter()
     for obj in char.inventory:
-        counts[obj.proto.short_description] += 1
+        counts[obj.proto.short_desc] += 1
 
     # Display in 3-column layout
     items = []
@@ -355,7 +355,7 @@ async def do_equipment(session: Any, args: str) -> None:
             if wc != 0:
                 stat_str += f"({{red}}{wc:+d}{{reset}})"
 
-            lines.append(f"  {slot_name:6s} : {obj.proto.short_description} {stat_str}")
+            lines.append(f"  {slot_name:6s} : {obj.proto.short_desc} {stat_str}")
 
     if not found:
         lines.append("  착용중인 장비가 없습니다.")

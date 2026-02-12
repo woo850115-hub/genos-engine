@@ -135,9 +135,9 @@ async def do_stat(session, args: str) -> None:
         if room:
             lines = [
                 f"{{bright_cyan}}[방 정보] #{room.proto.vnum} — {room.proto.name}{{reset}}",
-                f"  Zone: {room.proto.zone_number}  Sector: {room.proto.sector_type}",
+                f"  Zone: {room.proto.zone_vnum}  Sector: {room.proto.sector}",
                 f"  Exits: {len(room.proto.exits)}  Characters: {len(room.characters)}",
-                f"  Objects: {len(room.objects)}  Triggers: {room.proto.trigger_vnums}",
+                f"  Objects: {len(room.objects)}  Triggers: {room.proto.scripts}",
             ]
             await session.send_line("\r\n".join(lines))
         return
@@ -156,7 +156,7 @@ async def do_stat(session, args: str) -> None:
                 f"  Level: {mob.level}  HP: {mob.hp}/{mob.max_hp}  AC: {mob.proto.armor_class}",
                 f"  Hitroll: {mob.proto.hitroll}  Damage: {mob.proto.damage_dice}",
                 f"  Gold: {mob.gold}  Exp: {mob.proto.experience}",
-                f"  Triggers: {mob.proto.trigger_vnums}",
+                f"  Triggers: {mob.proto.scripts}",
             ]
             await session.send_line("\r\n".join(lines))
             return

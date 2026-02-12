@@ -136,7 +136,7 @@ class TriggerRuntime:
         if not room:
             return False
 
-        for trig_vnum in room.proto.trigger_vnums:
+        for trig_vnum in room.proto.scripts:
             trig = self._triggers.get(trig_vnum)
             if trig and trig["type"] == trig_type:
                 return await self.fire_trigger(trig_vnum, actor=actor, arg=arg)
@@ -145,7 +145,7 @@ class TriggerRuntime:
     async def check_mob_triggers(self, mob: Any, trig_type: int,
                                  actor: Any = None, arg: str = "") -> bool:
         """Check and fire mob triggers of given type."""
-        for trig_vnum in mob.proto.trigger_vnums:
+        for trig_vnum in mob.proto.scripts:
             trig = self._triggers.get(trig_vnum)
             if trig and trig["type"] == trig_type:
                 return await self.fire_trigger(trig_vnum, actor=actor, arg=arg)

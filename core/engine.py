@@ -858,13 +858,13 @@ class Engine:
                     continue
                 if zone.reset_mode == 1:
                     has_players = False
-                    for vnum in range(zone.bot, zone.top + 1):
-                        room = self.world.get_room(vnum)
-                        if room:
-                            for ch in room.characters:
-                                if not ch.is_npc:
-                                    has_players = True
-                                    break
+                    for room in self.world.rooms.values():
+                        if room.proto.zone_vnum != zone.vnum:
+                            continue
+                        for ch in room.characters:
+                            if not ch.is_npc:
+                                has_players = True
+                                break
                         if has_players:
                             break
                     if has_players:
@@ -879,7 +879,7 @@ class Engine:
         last_obj = None
         if_flag_ok = True
 
-        for cmd in zone.reset_commands:
+        for cmd in zone.resets:
             cmd_type = cmd.get("command", "")
             if_flag = cmd.get("if_flag", 0)
 
@@ -930,13 +930,13 @@ class Engine:
 
             elif cmd_type == "E":
                 vnum = cmd.get("arg1", 0)
-                wear_pos = cmd.get("arg3", 0)
+                wear_slot = str(cmd.get("arg3", "0"))
                 if last_mob:
                     obj = self.world.create_obj(vnum)
                     if obj:
                         obj.worn_by = last_mob
-                        obj.wear_pos = wear_pos
-                        last_mob.equipment[wear_pos] = obj
+                        obj.wear_slot = wear_slot
+                        last_mob.equipment[wear_slot] = obj
                         last_obj = obj
                         if_flag_ok = True
                     else:

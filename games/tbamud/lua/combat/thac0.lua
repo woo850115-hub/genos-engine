@@ -54,6 +54,13 @@ local function get_thac0(class_id, level)
     return tbl[clamped] or 20
 end
 
+local function get_stat(mob, key, default)
+    default = default or 13
+    local ok, val = pcall(function() return mob.stats[key] end)
+    if ok and val then return val end
+    return default
+end
+
 local function compute_ac(char)
     local ac
     if char.is_npc then
@@ -62,7 +69,7 @@ local function compute_ac(char)
         ac = 100
     end
     -- Dex bonus
-    local dex = math.min(math.max(char.dex or 13, 0), 25)
+    local dex = math.min(math.max(get_stat(char, "dex", 13), 0), 25)
     ac = ac + (DEX_DEFENSIVE[dex] or 0)
     return math.max(-10, math.min(ac, 100))
 end
@@ -74,7 +81,7 @@ local function roll_hit(ctx, attacker, defender)
         hr = attacker.proto.hitroll
     else
         thac0 = get_thac0(attacker.class_id, attacker.level)
-        hr = (attacker.hitroll or 0) + (STR_TOHIT[math.min(attacker.str or 13, 30)] or 0)
+        hr = (attacker.hitroll or 0) + (STR_TOHIT[math.min(get_stat(attacker, "str", 13), 30)] or 0)
     end
     local ac = compute_ac(defender)
     local roll = ctx:random(1, 20)
@@ -107,7 +114,7 @@ local function roll_damage(ctx, attacker)
     end
 
     if not attacker.is_npc then
-        total = total + (STR_TODAM[math.min(attacker.str or 13, 30)] or 0)
+        total = total + (STR_TODAM[math.min(get_stat(attacker, "str", 13), 30)] or 0)
         total = total + (attacker.damroll or 0)
     end
 

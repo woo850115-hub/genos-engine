@@ -16,42 +16,44 @@ def _make_shop_world():
     w = World()
     room = RoomProto(
         vnum=3001, name="상점", description="작은 상점입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[], extra_descs=[], trigger_vnums=[],
+        zone_vnum=30, sector=0, flags=[],
+        exits=[], extra_descs=[], scripts=[],
     )
     w.rooms[3001] = Room(proto=room)
 
     # Item proto for sale
     sword_proto = ItemProto(
-        vnum=200, keywords="sword 검 장검", short_description="멋진 장검",
-        long_description="멋진 장검이 놓여있습니다.", item_type=5,
-        extra_flags=[], wear_flags=[], values=[0, 0, 0, 3],
-        weight=10, cost=100, rent=10, affects=[], extra_descs=[], trigger_vnums=[],
+        vnum=200, keywords="sword 검 장검", short_desc="멋진 장검",
+        long_desc="멋진 장검이 놓여있습니다.", item_type="weapon",
+        flags=[], wear_slots=[], values={},
+        weight=10, cost=100, affects=[], extra_descs=[], scripts=[],
     )
     shield_proto = ItemProto(
-        vnum=201, keywords="shield 방패", short_description="튼튼한 방패",
-        long_description="", item_type=9,
-        extra_flags=[], wear_flags=[], values=[0, 0, 0, 0],
-        weight=15, cost=200, rent=20, affects=[], extra_descs=[], trigger_vnums=[],
+        vnum=201, keywords="shield 방패", short_desc="튼튼한 방패",
+        long_desc="", item_type="potion",
+        flags=[], wear_slots=[], values={},
+        weight=15, cost=200, affects=[], extra_descs=[], scripts=[],
     )
     w.item_protos[200] = sword_proto
     w.item_protos[201] = shield_proto
 
     # Shop
     shop = Shop(
-        vnum=1, keeper_vnum=100, selling_items=[200, 201],
-        profit_buy=1.0, profit_sell=0.5,
-        shop_room=3001, open1=0, close1=28, open2=0, close2=0,
+        vnum=1, keeper_vnum=100,
+        room_vnum=3001,
+        inventory=[{"vnum": 200}, {"vnum": 201}],
+        buy_profit=1.0, sell_profit=0.5,
+        hours={"open1": 0, "close1": 28, "open2": 0, "close2": 0},
     )
     w.shops[100] = shop
 
     # Shopkeeper NPC
     keeper_proto = MobProto(
-        vnum=100, keywords="shopkeeper 상인", short_description="상인",
-        long_description="상인이 서 있습니다.", detailed_description="",
-        level=20, hitroll=0, armor_class=0, hp_dice="10d10+100",
+        vnum=100, keywords="shopkeeper 상인", short_desc="상인",
+        long_desc="상인이 서 있습니다.", detail_desc="",
+        level=20, hitroll=0, armor_class=0, max_hp=155,
         damage_dice="1d8+5", gold=10000, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
     )
     keeper = MobInstance(
         id=100, proto=keeper_proto, room_vnum=3001, hp=200, max_hp=200,
@@ -81,11 +83,11 @@ def _make_engine_session(world):
     session.player_data = {"id": 1, "name": "테스터", "level": 10, "aliases": {}}
 
     proto = MobProto(
-        vnum=-1, keywords="테스터", short_description="테스터",
-        long_description="", detailed_description="",
-        level=10, hitroll=0, armor_class=100, hp_dice="0d0+0",
+        vnum=-1, keywords="테스터", short_desc="테스터",
+        long_desc="", detail_desc="",
+        level=10, hitroll=0, armor_class=100, max_hp=1,
         damage_dice="1d4+0", gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
     )
     char = MobInstance(
         id=1, proto=proto, room_vnum=3001, hp=100, max_hp=100,
@@ -109,8 +111,8 @@ class TestFindShop:
     def test_no_shop_empty_room(self):
         w = World()
         room = RoomProto(
-            vnum=3001, name="방", description="", zone_number=0, sector_type=0,
-            room_flags=[], exits=[], extra_descs=[], trigger_vnums=[],
+            vnum=3001, name="방", description="", zone_vnum=0, sector=0,
+            flags=[], exits=[], extra_descs=[], scripts=[],
         )
         w.rooms[3001] = Room(proto=room)
         eng, session = _make_engine_session(w)
@@ -120,13 +122,13 @@ class TestFindShop:
 
 class TestIsOpen:
     def test_open_during_hours(self):
-        shop = Shop(vnum=1, keeper_vnum=1, selling_items=[], profit_buy=1.0,
-                    profit_sell=0.5, shop_room=1, open1=6, close1=20, open2=0, close2=0)
+        shop = Shop(vnum=1, keeper_vnum=1, buy_profit=1.0, sell_profit=0.5,
+                    room_vnum=1, hours={"open1": 6, "close1": 20, "open2": 0, "close2": 0})
         assert _is_open(shop, hour=12)
 
     def test_closed_after_hours(self):
-        shop = Shop(vnum=1, keeper_vnum=1, selling_items=[], profit_buy=1.0,
-                    profit_sell=0.5, shop_room=1, open1=6, close1=20, open2=0, close2=0)
+        shop = Shop(vnum=1, keeper_vnum=1, buy_profit=1.0, sell_profit=0.5,
+                    room_vnum=1, hours={"open1": 6, "close1": 20, "open2": 0, "close2": 0})
         assert not _is_open(shop, hour=22)
 
 
@@ -224,8 +226,8 @@ class TestListCommand:
     async def test_list_no_shop(self):
         w = World()
         room = RoomProto(
-            vnum=1, name="방", description="", zone_number=0, sector_type=0,
-            room_flags=[], exits=[], extra_descs=[], trigger_vnums=[],
+            vnum=1, name="방", description="", zone_vnum=0, sector=0,
+            flags=[], exits=[], extra_descs=[], scripts=[],
         )
         w.rooms[1] = Room(proto=room)
         eng = Engine.__new__(Engine)
@@ -242,11 +244,11 @@ class TestListCommand:
         session.send_line = AsyncMock()
         session.engine = eng
         proto = MobProto(
-            vnum=-1, keywords="t", short_description="t",
-            long_description="", detailed_description="",
-            level=1, hitroll=0, armor_class=100, hp_dice="0d0+0",
+            vnum=-1, keywords="t", short_desc="t",
+            long_desc="", detail_desc="",
+            level=1, hitroll=0, armor_class=100, max_hp=1,
             damage_dice="1d4+0", gold=0, experience=0,
-            action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+            act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
         )
         session.character = MobInstance(
             id=1, proto=proto, room_vnum=1, hp=20, max_hp=20,

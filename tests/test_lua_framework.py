@@ -28,21 +28,19 @@ def _make_world():
     world = World()
     room1_proto = RoomProto(
         vnum=3001, name="신전", description="광대한 신전입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[Exit(direction=0, to_room=3002)],
-        extra_descs=[], trigger_vnums=[],
-    )
+        zone_vnum=30, sector=0, flags=[],
+        exits=[Exit(direction=0, to_vnum=3002)],
+        extra_descs=[], scripts=[], ext={})
     room2_proto = RoomProto(
         vnum=3002, name="길", description="좁은 길입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[Exit(direction=2, to_room=3001)],
-        extra_descs=[], trigger_vnums=[],
-    )
+        zone_vnum=30, sector=0, flags=[],
+        exits=[Exit(direction=2, to_vnum=3001)],
+        extra_descs=[], scripts=[], ext={})
     world.rooms[3001] = Room(proto=room1_proto)
     world.rooms[3002] = Room(proto=room2_proto)
     world.classes[0] = GameClass(
-        id=0, name="마법사", abbreviation="마법",
-        hp_gain_min=3, hp_gain_max=8, extensions={},
+        id=0, name="마법사", abbrev="마법",
+        hp_gain=(3, 8),
     )
     return world
 
@@ -77,13 +75,12 @@ def _make_session(engine, room_vnum=3001):
     session.player_data = {"id": 1, "name": "테스터", "level": 1, "class_id": 0}
 
     proto = MobProto(
-        vnum=-1, keywords="테스터", short_description="테스터",
-        long_description="", detailed_description="",
-        level=1, hitroll=0, armor_class=100, hp_dice="0d0+0",
+        vnum=-1, keywords="테스터", short_desc="테스터",
+        long_desc="", detail_desc="",
+        level=1, hitroll=0, armor_class=100, max_hp=1,
         damage_dice="1d4+0", gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=0,
-        trigger_vnums=[],
-    )
+        act_flags=[], aff_flags=[], alignment=0, sex=0,
+        scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
     char = MobInstance(
         id=1, proto=proto, room_vnum=room_vnum,
         hp=20, max_hp=20, mana=100, max_mana=100,
@@ -203,13 +200,12 @@ class TestCommandContext:
         session2 = MagicMock()
         session2.send_line = AsyncMock()
         proto2 = MobProto(
-            vnum=-1, keywords="동료", short_description="동료",
-            long_description="", detailed_description="",
-            level=1, hitroll=0, armor_class=100, hp_dice="0d0+0",
+            vnum=-1, keywords="동료", short_desc="동료",
+            long_desc="", detail_desc="",
+            level=1, hitroll=0, armor_class=100, max_hp=1,
             damage_dice="1d4+0", gold=0, experience=0,
-            action_flags=[], affect_flags=[], alignment=0, sex=0,
-            trigger_vnums=[],
-        )
+            act_flags=[], aff_flags=[], alignment=0, sex=0,
+            scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
         char2 = MobInstance(
             id=2, proto=proto2, room_vnum=3001,
             hp=20, max_hp=20, player_id=2, player_name="동료",
@@ -251,13 +247,12 @@ class TestCommandContext:
         session = _make_session(engine, 3001)
         # Add NPC
         npc_proto = MobProto(
-            vnum=100, keywords="고블린 goblin", short_description="고블린",
-            long_description="", detailed_description="",
-            level=3, hitroll=0, armor_class=100, hp_dice="1d8+5",
+            vnum=100, keywords="고블린 goblin", short_desc="고블린",
+            long_desc="", detail_desc="",
+            level=3, hitroll=0, armor_class=100, max_hp=9,
             damage_dice="1d4+0", gold=10, experience=50,
-            action_flags=[], affect_flags=[], alignment=-300, sex=0,
-            trigger_vnums=[],
-        )
+            act_flags=[], aff_flags=[], alignment=-300, sex=0,
+            scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
         npc = MobInstance(
             id=99, proto=npc_proto, room_vnum=3001,
             hp=10, max_hp=10,
@@ -365,13 +360,12 @@ class TestCommandContext:
         engine = _make_engine()
         session = _make_session(engine, 3001)
         npc_proto = MobProto(
-            vnum=100, keywords="몬스터", short_description="몬스터",
-            long_description="", detailed_description="",
-            level=3, hitroll=0, armor_class=100, hp_dice="1d8+5",
+            vnum=100, keywords="몬스터", short_desc="몬스터",
+            long_desc="", detail_desc="",
+            level=3, hitroll=0, armor_class=100, max_hp=9,
             damage_dice="1d4+0", gold=10, experience=50,
-            action_flags=[], affect_flags=[], alignment=0, sex=0,
-            trigger_vnums=[],
-        )
+            act_flags=[], aff_flags=[], alignment=0, sex=0,
+            scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
         npc = MobInstance(id=99, proto=npc_proto, room_vnum=3001, hp=10, max_hp=10)
         engine.world.rooms[3001].characters.append(npc)
 
@@ -393,13 +387,12 @@ class TestCommandContext:
         engine = _make_engine()
         session = _make_session(engine, 3001)
         item_proto = ItemProto(
-            vnum=1000, keywords="검 sword", short_description="빛나는 검",
-            long_description="검이 바닥에 놓여 있다.", item_type=5,
-            extra_flags=[], wear_flags=[], values=[0, 0, 3, 0],
-            weight=5, cost=100, rent=10, affects=[], extra_descs=[],
-            trigger_vnums=[],
-        )
-        obj = ObjInstance(id=500, proto=item_proto, values=[0, 0, 3, 0])
+            vnum=1000, keywords="검 sword", short_desc="빛나는 검",
+            long_desc="검이 바닥에 놓여 있다.", item_type="weapon",
+            flags=[], wear_slots=[], values={},
+            weight=5, cost=100, affects=[], extra_descs=[],
+            scripts=[], min_level=0, ext={})
+        obj = ObjInstance(id=500, proto=item_proto, values={})
         obj.carried_by = session.character
         session.character.inventory.append(obj)
 
@@ -412,12 +405,11 @@ class TestCommandContext:
         engine = _make_engine()
         session = _make_session(engine, 3001)
         item_proto = ItemProto(
-            vnum=1001, keywords="갑옷 armor", short_description="가죽 갑옷",
-            long_description="", item_type=9, extra_flags=[], wear_flags=[],
-            values=[0, 0, 0, 0], weight=10, cost=200, rent=20,
-            affects=[], extra_descs=[], trigger_vnums=[],
-        )
-        obj = ObjInstance(id=501, proto=item_proto, values=[0, 0, 0, 0])
+            vnum=1001, keywords="갑옷 armor", short_desc="가죽 갑옷",
+            long_desc="", item_type="potion", flags=[], wear_slots=[],
+            values={}, weight=10, cost=200,
+            affects=[], extra_descs=[], scripts=[], min_level=0, ext={})
+        obj = ObjInstance(id=501, proto=item_proto, values={})
 
         ctx = CommandContext(session, engine)
         ctx.equip(obj, 3)

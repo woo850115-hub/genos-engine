@@ -83,7 +83,7 @@ def compute_ac(char: MobInstance) -> int:
                 if isinstance(aff, dict) and aff.get("location") == "AC":
                     ac += aff.get("modifier", 0)
     # Dex bonus
-    dex = min(max(char.dex, 0), 25)
+    dex = min(max(char.stats.get("dex", 0), 0), 25)
     ac += DEX_DEFENSIVE.get(dex, 0)
     return max(-10, min(ac, 100))
 
@@ -96,7 +96,7 @@ def roll_hit(attacker: MobInstance, defender: MobInstance) -> bool:
         hr = attacker.proto.hitroll
     else:
         thac0 = get_thac0(attacker.class_id, attacker.level)
-        hr = attacker.hitroll + STR_TOHIT.get(min(attacker.str, 30), 0)
+        hr = attacker.hitroll + STR_TOHIT.get(min(attacker.stats.get("str", 0), 30), 0)
 
     ac = compute_ac(defender)
     roll = random.randint(1, 20)
@@ -127,7 +127,7 @@ def roll_damage(attacker: MobInstance) -> int:
 
     # Strength damage bonus
     if not attacker.is_npc:
-        total += STR_TODAM.get(min(attacker.str, 30), 0)
+        total += STR_TODAM.get(min(attacker.stats.get("str", 0), 30), 0)
         total += attacker.damroll
 
     return max(1, total)
@@ -135,10 +135,10 @@ def roll_damage(attacker: MobInstance) -> int:
 
 def get_attack_type(attacker: MobInstance) -> tuple[int, str]:
     """Get attack type index and name for display."""
-    # Check weapon in WIELD slot (slot 16)
-    weapon = attacker.equipment.get(16)
+    # Check weapon in WIELD slot
+    weapon = attacker.equipment.get("wield")
     if weapon and weapon.proto:
-        atk_type = weapon.proto.values[3] if len(weapon.proto.values) > 3 else 0
+        atk_type = weapon.proto.values.get("3", weapon.proto.values.get(3, 0)) if weapon.proto.values else 0
     else:
         atk_type = 0  # bare-hand hit
     name = ATTACK_TYPES.get(atk_type, "때림")

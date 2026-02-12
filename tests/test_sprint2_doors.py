@@ -16,16 +16,16 @@ def _make_door_world():
     # Room 1 has a closed, locked door to the north → Room 2
     room1 = RoomProto(
         vnum=1, name="남쪽 방", description="남쪽 방입니다.",
-        zone_number=0, sector_type=0, room_flags=[],
-        exits=[Exit(direction=0, to_room=2, keywords="door", door_flags=7, key_vnum=100)],
-        extra_descs=[], trigger_vnums=[],
+        zone_vnum=0, sector=0, flags=[],
+        exits=[Exit(direction=0, to_vnum=2, keywords="door", flags=("door", "closed", "locked"), key_vnum=100)],
+        extra_descs=[], scripts=[],
     )
     # Room 2 has a closed, locked door to the south → Room 1
     room2 = RoomProto(
         vnum=2, name="북쪽 방", description="북쪽 방입니다.",
-        zone_number=0, sector_type=0, room_flags=[],
-        exits=[Exit(direction=2, to_room=1, keywords="door", door_flags=7, key_vnum=100)],
-        extra_descs=[], trigger_vnums=[],
+        zone_vnum=0, sector=0, flags=[],
+        exits=[Exit(direction=2, to_vnum=1, keywords="door", flags=("door", "closed", "locked"), key_vnum=100)],
+        extra_descs=[], scripts=[],
     )
     w.rooms[1] = Room(proto=room1)
     w.rooms[2] = Room(proto=room2)
@@ -34,10 +34,10 @@ def _make_door_world():
 
     # Create a key item
     key_proto = ItemProto(
-        vnum=100, keywords="key 열쇠", short_description="작은 열쇠",
-        long_description="작은 열쇠가 놓여있습니다.", item_type=18,
-        extra_flags=[], wear_flags=[], values=[0, 0, 0, 0],
-        weight=1, cost=0, rent=0, affects=[], extra_descs=[], trigger_vnums=[],
+        vnum=100, keywords="key 열쇠", short_desc="작은 열쇠",
+        long_desc="작은 열쇠가 놓여있습니다.", item_type="key",
+        flags=[], wear_slots=[], values={},
+        weight=1, cost=0, affects=[], extra_descs=[], scripts=[],
     )
     w.item_protos[100] = key_proto
     return w
@@ -67,12 +67,12 @@ def _make_session(eng, room_vnum=1):
     session.player_data = {"id": 1, "name": "테스터", "level": 1, "aliases": {}}
 
     proto = MobProto(
-        vnum=-1, keywords="테스터", short_description="테스터",
-        long_description="", detailed_description="",
-        level=1, hitroll=0, armor_class=100, hp_dice="0d0+0",
+        vnum=-1, keywords="테스터", short_desc="테스터",
+        long_desc="", detail_desc="",
+        level=1, hitroll=0, armor_class=100, max_hp=1,
         damage_dice="1d4+0", gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=0,
-        trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=0,
+        scripts=[],
     )
     char = MobInstance(
         id=1, proto=proto, room_vnum=room_vnum, hp=20, max_hp=20,

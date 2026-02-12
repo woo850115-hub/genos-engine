@@ -166,7 +166,7 @@ register_command("inventory", function(ctx, args)
     for i = 0, count - 1 do
         local ok, obj = pcall(function() return inv[i] end)
         if ok and obj then
-            local desc = obj.proto.short_description
+            local desc = obj.proto.short_desc
             if not counts[desc] then
                 counts[desc] = 0
                 order[#order + 1] = desc
@@ -252,7 +252,7 @@ register_command("equipment", function(ctx, args)
             end
 
             local slot_name = WEAR_SLOTS[slot_id] or ("슬롯" .. slot_id)
-            ctx:send("  " .. string.format("%-6s", slot_name) .. " : " .. obj.proto.short_description .. " " .. stat_str)
+            ctx:send("  " .. string.format("%-6s", slot_name) .. " : " .. obj.proto.short_desc .. " " .. stat_str)
         end
     end
 

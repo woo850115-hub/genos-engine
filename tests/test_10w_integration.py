@@ -35,23 +35,20 @@ def _make_10w_world():
     r1 = RoomProto(
         vnum=START, name="장백성 마을 광장",
         description="드넓은 광장 한가운데 커다란 느티나무가 서 있습니다.",
-        zone_number=1, sector_type=0, room_flags=[],
-        exits=[Exit(direction=1, to_room=ROOM_B)],  # east
-        extra_descs=[], trigger_vnums=[],
-    )
+        zone_vnum=1, sector=0, flags=[],
+        exits=[Exit(direction=1, to_vnum=ROOM_B)],  # east
+        extra_descs=[], scripts=[], ext={})
     r2 = RoomProto(
         vnum=ROOM_B, name="장백성 무기점 앞",
         description="무기점 앞 대로입니다.",
-        zone_number=1, sector_type=0, room_flags=[],
-        exits=[Exit(direction=3, to_room=START)],  # west
-        extra_descs=[], trigger_vnums=[],
-    )
+        zone_vnum=1, sector=0, flags=[],
+        exits=[Exit(direction=3, to_vnum=START)],  # west
+        extra_descs=[], scripts=[], ext={})
     r_void = RoomProto(
         vnum=VOID, name="대기실",
         description="영혼이 머무는 공간입니다.",
-        zone_number=0, sector_type=0, room_flags=[],
-        exits=[], extra_descs=[], trigger_vnums=[],
-    )
+        zone_vnum=0, sector=0, flags=[],
+        exits=[], extra_descs=[], scripts=[], ext={})
 
     w.rooms[START] = Room(proto=r1)
     w.rooms[ROOM_B] = Room(proto=r2)
@@ -59,22 +56,19 @@ def _make_10w_world():
 
     # Zone (zones is a list, not dict)
     w.zones.append(Zone(
-        vnum=1, name="장백성", builders="", lifespan=30,
-        bot=0, top=ROOM_B, reset_mode=2, zone_flags=[],
-        reset_commands=[],
-    ))
+        vnum=1, name="장백성", builders="", lifespan=30, reset_mode=2, flags=[],
+        resets=[], ext={}))
 
     # Mob: 산적
     bandit = MobProto(
-        vnum=500, keywords="산적 bandit", short_description="산적",
-        long_description="산적이 어슬렁거리고 있습니다.",
-        detailed_description="험악한 인상의 산적입니다.",
+        vnum=500, keywords="산적 bandit", short_desc="산적",
+        long_desc="산적이 어슬렁거리고 있습니다.",
+        detail_desc="험악한 인상의 산적입니다.",
         level=8, hitroll=3, armor_class=60,
-        hp_dice="3d6+15", damage_dice="1d6+2",
+        max_hp=25, damage_dice="1d6+2",
         gold=50, experience=300,
-        action_flags=["ISNPC"], affect_flags=[], alignment=-200, sex=1,
-        trigger_vnums=[],
-    )
+        act_flags=["ISNPC"], aff_flags=[], alignment=-200, sex=1,
+        scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
     w.mob_protos[500] = bandit
 
     bandit_mob = MobInstance(
@@ -86,16 +80,15 @@ def _make_10w_world():
     # Item: 단검
     dagger = ItemProto(
         vnum=600, keywords="단검 dagger",
-        short_description="녹슨 단검",
-        long_description="녹슨 단검이 바닥에 놓여 있습니다.",
-        item_type=5, extra_flags=[], wear_flags=[13],  # wield
-        values=[0, 2, 4, 1], weight=3, cost=20, rent=5,
-        affects=[], extra_descs=[], trigger_vnums=[],
-    )
+        short_desc="녹슨 단검",
+        long_desc="녹슨 단검이 바닥에 놓여 있습니다.",
+        item_type="weapon", flags=[], wear_slots=["13"],  # wield
+        values={}, weight=3, cost=20,
+        affects=[], extra_descs=[], scripts=[], min_level=0, ext={})
     w.item_protos[600] = dagger
 
     dagger_obj = ObjInstance(
-        id=_next_id(), proto=dagger, values=list(dagger.values),
+        id=_next_id(), proto=dagger, values=dict(dagger.values),
     )
     dagger_obj.room_vnum = START
     w.rooms[START].objects.append(dagger_obj)
@@ -105,13 +98,12 @@ def _make_10w_world():
 
 def _make_pc(room_vnum=1392841419, level=10, class_id=1):
     proto = MobProto(
-        vnum=-1, keywords="무사 player", short_description="무사",
-        long_description="", detailed_description="",
+        vnum=-1, keywords="무사 player", short_desc="무사",
+        long_desc="", detail_desc="",
         level=level, hitroll=5, armor_class=50,
-        hp_dice="0d0+100", damage_dice="1d6+3",
+        max_hp=100, damage_dice="1d6+3",
         gold=1000, experience=5000,
-        action_flags=[], affect_flags=[], alignment=0, sex=1, trigger_vnums=[],
-    )
+        act_flags=[], aff_flags=[], alignment=0, sex=1, scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
     char = MobInstance(
         id=_next_id(), proto=proto, room_vnum=room_vnum,
         hp=200, max_hp=200, player_id=1, player_name="무사",
@@ -197,14 +189,13 @@ class TestCombatE2E:
         target = MobInstance(
             id=_next_id(),
             proto=MobProto(
-                vnum=500, keywords="산적", short_description="산적",
-                long_description="", detailed_description="",
+                vnum=500, keywords="산적", short_desc="산적",
+                long_desc="", detail_desc="",
                 level=8, hitroll=3, armor_class=60,
-                hp_dice="3d6+15", damage_dice="1d6+2",
+                max_hp=25, damage_dice="1d6+2",
                 gold=50, experience=300,
-                action_flags=["ISNPC"], affect_flags=[], alignment=0, sex=1,
-                trigger_vnums=[],
-            ),
+                act_flags=["ISNPC"], aff_flags=[], alignment=0, sex=1,
+                scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={}),
             room_vnum=1,
             hp=100, max_hp=100,
         )
@@ -294,13 +285,12 @@ class TestItemsE2E:
                 id=_next_id(),
                 proto=ItemProto(
                     vnum=700 + i, keywords=f"반지{i+1} ring{i+1}",
-                    short_description=f"반지{i+1}",
-                    long_description="", item_type=9, extra_flags=[],
-                    wear_flags=[9], values=[0, 0, 0, 0],
-                    weight=1, cost=10, rent=1, affects=[], extra_descs=[],
-                    trigger_vnums=[],
-                ),
-                values=[0, 0, 0, 0],
+                    short_desc=f"반지{i+1}",
+                    long_desc="", item_type="potion", flags=[],
+                    wear_slots=["9"], values={},
+                    weight=1, cost=10, affects=[], extra_descs=[],
+                    scripts=[], min_level=0, ext={}),
+                values={},
             )
             char.inventory.append(ring)
             ring.carried_by = char
@@ -382,13 +372,12 @@ class TestScoreE2E:
         sword = ObjInstance(
             id=_next_id(),
             proto=ItemProto(
-                vnum=601, keywords="도검", short_description="태극검",
-                long_description="", item_type=5, extra_flags=[],
-                wear_flags=[13], values=[0, 3, 8, 0],
-                weight=10, cost=200, rent=20,
-                affects=[], extra_descs=[], trigger_vnums=[],
-            ),
-            values=[0, 3, 8, 0],
+                vnum=601, keywords="도검", short_desc="태극검",
+                long_desc="", item_type="weapon", flags=[],
+                wear_slots=["13"], values={},
+                weight=10, cost=200,
+                affects=[], extra_descs=[], scripts=[], min_level=0, ext={}),
+            values={},
         )
         char.equipment[13] = sword
 
@@ -513,14 +502,13 @@ class TestSkillsE2E:
         target = MobInstance(
             id=_next_id(),
             proto=MobProto(
-                vnum=500, keywords="적", short_description="적",
-                long_description="", detailed_description="",
+                vnum=500, keywords="적", short_desc="적",
+                long_desc="", detail_desc="",
                 level=5, hitroll=0, armor_class=80,
-                hp_dice="0d0+50", damage_dice="1d4+1",
+                max_hp=50, damage_dice="1d4+1",
                 gold=0, experience=0,
-                action_flags=["ISNPC"], affect_flags=[], alignment=0, sex=0,
-                trigger_vnums=[],
-            ),
+                act_flags=["ISNPC"], aff_flags=[], alignment=0, sex=0,
+                scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={}),
             room_vnum=1, hp=50, max_hp=50,
         )
         target.move = 50
@@ -657,10 +645,9 @@ class TestTbamudCompat:
         w = World()
         r = RoomProto(
             vnum=1, name="Test", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[Exit(direction=1, to_room=2)],
-            extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[Exit(direction=1, to_vnum=2)],
+            extra_descs=[], scripts=[], ext={})
         w.rooms[1] = Room(proto=r)
         assert w.rooms[1].proto.exits[0].direction == 1
         assert w.rooms[1].proto.exits[0].to_room == 2
@@ -672,8 +659,7 @@ class TestTbamudCompat:
         for v in big_vnums:
             w.rooms[v] = Room(proto=RoomProto(
                 vnum=v, name=f"Room{v}", description="",
-                zone_number=0, sector_type=0, room_flags=[],
-                exits=[], extra_descs=[], trigger_vnums=[],
-            ))
+                zone_vnum=0, sector=0, flags=[],
+                exits=[], extra_descs=[], scripts=[], ext={}))
         for v in big_vnums:
             assert w.get_room(v) is not None

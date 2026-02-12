@@ -41,7 +41,7 @@ register_command("buy", function(ctx, args)
                     end
                     ch.gold = ch.gold - price
                     ctx:obj_to_char(obj, ch)
-                    ctx:send("{bright_yellow}" .. obj.proto.short_description ..
+                    ctx:send("{bright_yellow}" .. obj.proto.short_desc ..
                              "을(를) " .. price .. " 골드에 구입했습니다.{reset}")
                     return
                 end
@@ -122,7 +122,7 @@ register_command("list", function(ctx, args)
                     local price = math.floor(obj.proto.cost * shop.profit_buy)
                     local type_name = ITEM_TYPE_NAMES[obj.proto.item_type] or "기타"
                     table.insert(lines, "  " .. idx .. ". " ..
-                                 obj.proto.short_description .. " [" .. type_name ..
+                                 obj.proto.short_desc .. " [" .. type_name ..
                                  "] — " .. price .. " 골드 (무한)")
                     idx = idx + 1
                 end

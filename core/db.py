@@ -170,3 +170,63 @@ class Database:
                 "RETURNING *",
                 game, category, name, source,
             )
+
+    # ── Ensure tables (idempotent) ──────────────────────────────────
+
+    async def ensure_players_table(self) -> None:
+        """Create players table if it doesn't exist (auto_init covers schema.sql,
+        but this ensures the table exists for edge cases)."""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS players (
+                    id            SERIAL PRIMARY KEY,
+                    name          TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL DEFAULT '',
+                    class_id      INTEGER NOT NULL DEFAULT 0,
+                    race_id       INTEGER NOT NULL DEFAULT 0,
+                    sex           SMALLINT NOT NULL DEFAULT 0,
+                    level         INTEGER NOT NULL DEFAULT 1,
+                    experience    BIGINT NOT NULL DEFAULT 0,
+                    hp            INTEGER NOT NULL DEFAULT 100,
+                    max_hp        INTEGER NOT NULL DEFAULT 100,
+                    mana          INTEGER NOT NULL DEFAULT 100,
+                    max_mana      INTEGER NOT NULL DEFAULT 100,
+                    move          INTEGER NOT NULL DEFAULT 100,
+                    max_move      INTEGER NOT NULL DEFAULT 100,
+                    gold          INTEGER NOT NULL DEFAULT 0,
+                    bank_gold     INTEGER NOT NULL DEFAULT 0,
+                    armor_class   INTEGER NOT NULL DEFAULT 100,
+                    alignment     INTEGER NOT NULL DEFAULT 0,
+                    stats         JSONB NOT NULL DEFAULT '{}',
+                    equipment     JSONB NOT NULL DEFAULT '{}',
+                    inventory     JSONB NOT NULL DEFAULT '[]',
+                    affects       JSONB NOT NULL DEFAULT '[]',
+                    skills        JSONB NOT NULL DEFAULT '{}',
+                    flags         TEXT[] NOT NULL DEFAULT '{}',
+                    aliases       JSONB NOT NULL DEFAULT '{}',
+                    title         TEXT NOT NULL DEFAULT '',
+                    description   TEXT NOT NULL DEFAULT '',
+                    room_vnum     INTEGER NOT NULL DEFAULT 0,
+                    org_id        INTEGER NOT NULL DEFAULT 0,
+                    org_rank      INTEGER NOT NULL DEFAULT 0,
+                    ext           JSONB NOT NULL DEFAULT '{}',
+                    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    last_login    TIMESTAMPTZ
+                )
+            """)
+
+    async def ensure_lua_scripts_table(self) -> None:
+        """Create lua_scripts table if it doesn't exist."""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS lua_scripts (
+                    id          SERIAL PRIMARY KEY,
+                    game        TEXT NOT NULL DEFAULT '',
+                    category    TEXT NOT NULL DEFAULT '',
+                    name        TEXT NOT NULL DEFAULT '',
+                    source      TEXT NOT NULL DEFAULT '',
+                    version     INTEGER NOT NULL DEFAULT 1,
+                    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE (game, category, name)
+                )
+            """)

@@ -18,13 +18,12 @@ def _import_constants():
 
 def _make_char(level=1, exp=0, class_id=1):
     proto = MobProto(
-        vnum=-1, keywords="player", short_description="테스터",
-        long_description="", detailed_description="",
+        vnum=-1, keywords="player", short_desc="테스터",
+        long_desc="", detail_desc="",
         level=level, hitroll=0, armor_class=50,
-        hp_dice="0d0+100", damage_dice="1d6+2",
+        max_hp=100, damage_dice="1d6+2",
         gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=1, trigger_vnums=[],
-    )
+        act_flags=[], aff_flags=[], alignment=0, sex=1, scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
     char = MobInstance(
         id=_next_id(), proto=proto, room_vnum=1,
         hp=100, max_hp=100, player_id=1, player_name="테스터",

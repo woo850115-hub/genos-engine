@@ -31,16 +31,16 @@ def _make_world():
     w = World()
     room = RoomProto(
         vnum=3001, name="신전", description="넓은 신전입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[], extra_descs=[], trigger_vnums=[],
+        zone_vnum=30, sector=0, flags=[],
+        exits=[], extra_descs=[], scripts=[],
     )
     w.rooms[3001] = Room(proto=room)
     # Add tbaMUD classes for score tests
     w.classes = {
-        0: GameClass(id=0, name="마법사", abbreviation="마법", hp_gain_min=3, hp_gain_max=8, extensions={}),
-        1: GameClass(id=1, name="성직자", abbreviation="성직", hp_gain_min=5, hp_gain_max=10, extensions={}),
-        2: GameClass(id=2, name="도적", abbreviation="도적", hp_gain_min=6, hp_gain_max=11, extensions={}),
-        3: GameClass(id=3, name="전사", abbreviation="전사", hp_gain_min=10, hp_gain_max=15, extensions={}),
+        0: GameClass(id=0, name="마법사", abbrev="마법", hp_gain=(3, 8)),
+        1: GameClass(id=1, name="성직자", abbrev="성직", hp_gain=(5, 10)),
+        2: GameClass(id=2, name="도적", abbrev="도적", hp_gain=(6, 11)),
+        3: GameClass(id=3, name="전사", abbrev="전사", hp_gain=(10, 15)),
     }
     return w
 
@@ -67,12 +67,12 @@ def _make_engine_session(world=None):
     session.player_data = {"id": 1, "name": "테스터", "level": 10, "sex": 1, "aliases": {}}
 
     proto = MobProto(
-        vnum=-1, keywords="테스터", short_description="테스터",
-        long_description="", detailed_description="",
-        level=10, hitroll=0, armor_class=100, hp_dice="0d0+0",
+        vnum=-1, keywords="테스터", short_desc="테스터",
+        long_desc="", detail_desc="",
+        level=10, hitroll=0, armor_class=100, max_hp=1,
         damage_dice="1d4+0", gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=0,
-        trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=0,
+        scripts=[],
     )
     char = MobInstance(
         id=1, proto=proto, room_vnum=3001, hp=100, max_hp=100,
@@ -86,11 +86,11 @@ def _make_engine_session(world=None):
 
 def _add_mob(world, vnum=50, level=5, hp=20, room_vnum=3001):
     proto = MobProto(
-        vnum=vnum, keywords="goblin 고블린", short_description="고블린",
-        long_description="고블린이 서 있습니다.", detailed_description="",
-        level=level, hitroll=0, armor_class=100, hp_dice="1d1+1",
+        vnum=vnum, keywords="goblin 고블린", short_desc="고블린",
+        long_desc="고블린이 서 있습니다.", detail_desc="",
+        level=level, hitroll=0, armor_class=100, max_hp=2,
         damage_dice="1d4+0", gold=10, experience=100,
-        action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
     )
     mob = MobInstance(id=vnum, proto=proto, room_vnum=room_vnum, hp=hp, max_hp=hp)
     world.rooms[room_vnum].characters.append(mob)
@@ -141,8 +141,8 @@ class TestCastCommand:
         w = _make_world()
         room2 = RoomProto(
             vnum=3002, name="들판", description="들판.",
-            zone_number=30, sector_type=0, room_flags=[],
-            exits=[], extra_descs=[], trigger_vnums=[],
+            zone_vnum=30, sector=0, flags=[],
+            exits=[], extra_descs=[], scripts=[],
         )
         w.rooms[3002] = Room(proto=room2)
 

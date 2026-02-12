@@ -33,27 +33,30 @@ class TestDiceRolling:
 
 class TestRoomProto:
     def test_create(self):
-        exit1 = Exit(direction=0, to_room=3002, keywords="", description="")
+        exit1 = Exit(direction=0, to_vnum=3002)
         room = RoomProto(
             vnum=3001, name="Temple", description="A large temple.",
-            zone_number=30, sector_type=0, room_flags=[],
-            exits=[exit1], extra_descs=[], trigger_vnums=[],
+            zone_vnum=30, sector=0, flags=[],
+            exits=[exit1], extra_descs=[], scripts=[], ext={},
         )
         assert room.vnum == 3001
         assert room.name == "Temple"
         assert len(room.exits) == 1
-        assert room.exits[0].to_room == 3002
+        assert room.exits[0].to_vnum == 3002
 
 
 class TestMobInstance:
     def test_npc_detection(self):
         proto = MobProto(
-            vnum=100, keywords="goblin", short_description="A goblin",
-            long_description="A goblin stands here.", detailed_description="",
-            level=5, hitroll=3, armor_class=90, hp_dice="3d8+30",
+            vnum=100, keywords="goblin", short_desc="A goblin",
+            long_desc="A goblin stands here.", detail_desc="",
+            level=5, max_hp=54, max_mana=0, max_move=0,
+            armor_class=90, hitroll=3, damroll=0,
             damage_dice="1d6+2", gold=10, experience=100,
-            action_flags=[], affect_flags=[], alignment=-500, sex=1,
-            trigger_vnums=[],
+            alignment=-500, sex=1, position=8,
+            class_id=0, race_id=0,
+            act_flags=[], aff_flags=[], stats={}, skills={},
+            scripts=[], ext={},
         )
         mob = MobInstance(id=1, proto=proto, room_vnum=3001, hp=30, max_hp=30)
         assert mob.is_npc is True
@@ -61,12 +64,15 @@ class TestMobInstance:
 
     def test_player_detection(self):
         proto = MobProto(
-            vnum=-1, keywords="player", short_description="Player",
-            long_description="", detailed_description="",
-            level=1, hitroll=0, armor_class=100, hp_dice="0d0+0",
+            vnum=-1, keywords="player", short_desc="Player",
+            long_desc="", detail_desc="",
+            level=1, max_hp=1, max_mana=0, max_move=0,
+            armor_class=100, hitroll=0, damroll=0,
             damage_dice="1d4+0", gold=0, experience=0,
-            action_flags=[], affect_flags=[], alignment=0, sex=0,
-            trigger_vnums=[],
+            alignment=0, sex=0, position=8,
+            class_id=0, race_id=0,
+            act_flags=[], aff_flags=[], stats={}, skills={},
+            scripts=[], ext={},
         )
         mob = MobInstance(
             id=2, proto=proto, room_vnum=3001, hp=20, max_hp=20,
@@ -89,18 +95,21 @@ class TestWorld:
     def test_create_mob(self):
         w = World()
         proto = MobProto(
-            vnum=100, keywords="rat", short_description="A rat",
-            long_description="A rat scurries here.", detailed_description="",
-            level=1, hitroll=0, armor_class=100, hp_dice="1d4+2",
+            vnum=100, keywords="rat", short_desc="A rat",
+            long_desc="A rat scurries here.", detail_desc="",
+            level=1, max_hp=5, max_mana=0, max_move=0,
+            armor_class=100, hitroll=0, damroll=0,
             damage_dice="1d2+0", gold=0, experience=10,
-            action_flags=[], affect_flags=[], alignment=0, sex=0,
-            trigger_vnums=[],
+            alignment=0, sex=0, position=8,
+            class_id=0, race_id=0,
+            act_flags=[], aff_flags=[], stats={}, skills={},
+            scripts=[], ext={},
         )
         w.mob_protos[100] = proto
         room_proto = RoomProto(
             vnum=3001, name="Test", description="Test room",
-            zone_number=30, sector_type=0, room_flags=[],
-            exits=[], extra_descs=[], trigger_vnums=[],
+            zone_vnum=30, sector=0, flags=[],
+            exits=[], extra_descs=[], scripts=[], ext={},
         )
         w.rooms[3001] = Room(proto=room_proto)
 
@@ -113,11 +122,12 @@ class TestWorld:
     def test_create_obj(self):
         w = World()
         proto = ItemProto(
-            vnum=200, keywords="sword", short_description="A sword",
-            long_description="A sword lies here.", item_type=5,
-            extra_flags=[], wear_flags=[16], values=[0, 3, 6, 0],
-            weight=5, cost=100, rent=10, affects=[],
-            extra_descs=[], trigger_vnums=[],
+            vnum=200, keywords="sword", short_desc="A sword",
+            long_desc="A sword lies here.", item_type="weapon",
+            weight=5, cost=100, min_level=0,
+            wear_slots=["wield"], flags=["magic"],
+            values={"damage": "3d6+0", "weapon_type": "slash"},
+            affects=[], extra_descs=[], scripts=[], ext={},
         )
         w.item_protos[200] = proto
         obj = w.create_obj(200)
@@ -127,21 +137,24 @@ class TestWorld:
     def test_char_to_room(self):
         w = World()
         room1 = RoomProto(vnum=1, name="Room 1", description="",
-                          zone_number=0, sector_type=0, room_flags=[],
-                          exits=[], extra_descs=[], trigger_vnums=[])
+                          zone_vnum=0, sector=0, flags=[],
+                          exits=[], extra_descs=[], scripts=[], ext={})
         room2 = RoomProto(vnum=2, name="Room 2", description="",
-                          zone_number=0, sector_type=0, room_flags=[],
-                          exits=[], extra_descs=[], trigger_vnums=[])
+                          zone_vnum=0, sector=0, flags=[],
+                          exits=[], extra_descs=[], scripts=[], ext={})
         w.rooms[1] = Room(proto=room1)
         w.rooms[2] = Room(proto=room2)
 
         proto = MobProto(
-            vnum=1, keywords="test", short_description="Test",
-            long_description="", detailed_description="",
-            level=1, hitroll=0, armor_class=100, hp_dice="1d1+1",
+            vnum=1, keywords="test", short_desc="Test",
+            long_desc="", detail_desc="",
+            level=1, max_hp=2, max_mana=0, max_move=0,
+            armor_class=100, hitroll=0, damroll=0,
             damage_dice="1d1+0", gold=0, experience=0,
-            action_flags=[], affect_flags=[], alignment=0, sex=0,
-            trigger_vnums=[],
+            alignment=0, sex=0, position=8,
+            class_id=0, race_id=0,
+            act_flags=[], aff_flags=[], stats={}, skills={},
+            scripts=[], ext={},
         )
         mob = MobInstance(id=99, proto=proto, room_vnum=1, hp=10, max_hp=10)
         w.rooms[1].characters.append(mob)

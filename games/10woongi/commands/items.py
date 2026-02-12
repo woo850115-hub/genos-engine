@@ -73,14 +73,15 @@ async def do_wear(session: Any, args: str) -> None:
     target_kw = args.strip().lower()
     for obj in list(char.inventory):
         if target_kw in obj.proto.keywords.lower():
-            # Find available slot from wear_flags
-            wear_flags = obj.proto.wear_flags
-            if not wear_flags:
+            # Find available slot from wear_slots (str list → int list)
+            raw_slots = obj.proto.wear_slots
+            if not raw_slots:
                 await session.send_line("착용할 수 없는 물건입니다.")
                 return
+            int_slots = [int(s) for s in raw_slots if str(s).isdigit()]
 
             # Find first empty slot matching wear flags
-            slot = _find_wear_slot(char, wear_flags)
+            slot = _find_wear_slot(char, int_slots)
             if slot is None:
                 await session.send_line("착용할 수 있는 빈 슬롯이 없습니다.")
                 return
@@ -88,7 +89,7 @@ async def do_wear(session: Any, args: str) -> None:
             char.inventory.remove(obj)
             obj.carried_by = None
             obj.worn_by = char
-            obj.wear_pos = slot
+            obj.wear_slot = slot
             char.equipment[slot] = obj
 
             slot_name = constants.WEAR_SLOTS.get(slot, f"슬롯{slot}")
@@ -98,7 +99,7 @@ async def do_wear(session: Any, args: str) -> None:
     await session.send_line("그런 물건을 가지고 있지 않습니다.")
 
 
-def _find_wear_slot(char: Any, wear_flags: list[int]) -> int | None:
+def _find_wear_slot(char: Any, wear_slots: list[int]) -> int | None:
     """Find first available equipment slot from wear flags.
 
     Wear flag values map to slot IDs. Ring slots (9, 13~21) fill sequentially.
@@ -110,7 +111,7 @@ def _find_wear_slot(char: Any, wear_flags: list[int]) -> int | None:
     # Armlet slots: 8, 22
     armlet_slots = [8, 22]
 
-    for flag in wear_flags:
+    for flag in wear_slots:
         if flag == 0:
             continue
         # Map wear flag to slot ID(s)
@@ -144,7 +145,7 @@ async def do_remove(session: Any, args: str) -> None:
         if target_kw in obj.proto.keywords.lower():
             del char.equipment[slot_id]
             obj.worn_by = None
-            obj.wear_pos = -1
+            obj.wear_slot = -1
             obj.carried_by = char
             char.inventory.append(obj)
             slot_name = constants.WEAR_SLOTS.get(slot_id, f"슬롯{slot_id}")

@@ -33,7 +33,7 @@ async def handle_death(engine: Engine, victim: MobInstance,
         for obj in corpse_items:
             obj.carried_by = None
             obj.worn_by = None
-            obj.wear_pos = -1
+            obj.wear_slot = -1
             obj.room_vnum = victim.room_vnum
             room.objects.append(obj)
 

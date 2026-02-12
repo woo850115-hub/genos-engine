@@ -20,13 +20,13 @@ def _make_world():
     w = World()
     room1 = RoomProto(
         vnum=3001, name="신전", description="넓은 신전입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[], extra_descs=[], trigger_vnums=[],
+        zone_vnum=30, sector=0, flags=[],
+        exits=[], extra_descs=[], scripts=[],
     )
     room2 = RoomProto(
         vnum=3002, name="들판", description="넓은 들판입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[], extra_descs=[], trigger_vnums=[],
+        zone_vnum=30, sector=0, flags=[],
+        exits=[], extra_descs=[], scripts=[],
     )
     w.rooms[3001] = Room(proto=room1)
     w.rooms[3002] = Room(proto=room2)
@@ -48,11 +48,11 @@ def _make_engine(world):
 
 def _player(level=10, exp=0, class_id=3, hp=100, gold=50, room_vnum=3002):
     proto = MobProto(
-        vnum=-1, keywords="플레이어", short_description="플레이어",
-        long_description="", detailed_description="",
-        level=level, hitroll=0, armor_class=100, hp_dice="0d0+0",
+        vnum=-1, keywords="플레이어", short_desc="플레이어",
+        long_desc="", detail_desc="",
+        level=level, hitroll=0, armor_class=100, max_hp=1,
         damage_dice="1d4+0", gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
     )
     ch = MobInstance(
         id=1, proto=proto, room_vnum=room_vnum, hp=hp, max_hp=hp,
@@ -68,11 +68,11 @@ def _player(level=10, exp=0, class_id=3, hp=100, gold=50, room_vnum=3002):
 
 def _npc(level=5, hp=50, gold=20, exp=100, room_vnum=3002):
     proto = MobProto(
-        vnum=50, keywords="goblin 고블린", short_description="고블린",
-        long_description="", detailed_description="",
-        level=level, hitroll=0, armor_class=100, hp_dice="1d1+1",
+        vnum=50, keywords="goblin 고블린", short_desc="고블린",
+        long_desc="", detail_desc="",
+        level=level, hitroll=0, armor_class=100, max_hp=2,
         damage_dice="1d4+0", gold=gold, experience=exp,
-        action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
     )
     return MobInstance(
         id=50, proto=proto, room_vnum=room_vnum, hp=hp, max_hp=hp, gold=gold,
@@ -253,10 +253,10 @@ class TestHandleDeath:
         killer = _player(level=10, room_vnum=3002)
         victim = _npc(room_vnum=3002)
         item_proto = ItemProto(
-            vnum=1, keywords="sword 검", short_description="검",
-            long_description="검이 있습니다.", item_type=5,
-            extra_flags=[], wear_flags=[], values=[0, 0, 0, 0],
-            weight=5, cost=100, rent=10, affects=[], extra_descs=[], trigger_vnums=[],
+            vnum=1, keywords="sword 검", short_desc="검",
+            long_desc="검이 있습니다.", item_type="weapon",
+            flags=[], wear_slots=[], values={},
+            weight=5, cost=100, affects=[], extra_descs=[], scripts=[],
         )
         victim.inventory.append(ObjInstance(id=1, proto=item_proto))
         w.rooms[3002].characters.extend([killer, victim])

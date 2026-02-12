@@ -32,8 +32,8 @@ register_command("look", function(ctx, args)
             local mob = chars[i]
             if mob ~= ch then
                 if mob.proto.keywords:lower():find(target, 1, true) then
-                    if mob.proto.detailed_description and mob.proto.detailed_description ~= "" then
-                        ctx:send(mob.proto.detailed_description)
+                    if mob.proto.detail_desc and mob.proto.detail_desc ~= "" then
+                        ctx:send(mob.proto.detail_desc)
                     else
                         ctx:send(mob.name .. "을(를) 바라봅니다.")
                     end
@@ -51,7 +51,7 @@ register_command("look", function(ctx, args)
         for i = 1, #objs do
             local obj = objs[i]
             if obj.proto.keywords:lower():find(target, 1, true) then
-                ctx:send(obj.proto.short_description)
+                ctx:send(obj.proto.short_desc)
                 return
             end
         end
@@ -61,7 +61,7 @@ register_command("look", function(ctx, args)
         for i = 1, #inv do
             local obj = inv[i]
             if obj.proto.keywords:lower():find(target, 1, true) then
-                ctx:send(obj.proto.short_description)
+                ctx:send(obj.proto.short_desc)
                 return
             end
         end
@@ -97,8 +97,8 @@ register_command("look", function(ctx, args)
     local objs = ctx:get_objects()
     for i = 1, #objs do
         local obj = objs[i]
-        if obj.proto.long_description and obj.proto.long_description ~= "" then
-            ctx:send("{yellow}" .. obj.proto.long_description:gsub("%s+$", "") .. "{reset}")
+        if obj.proto.long_desc and obj.proto.long_desc ~= "" then
+            ctx:send("{yellow}" .. obj.proto.long_desc:gsub("%s+$", "") .. "{reset}")
         end
     end
 
@@ -108,7 +108,7 @@ register_command("look", function(ctx, args)
         local mob = chars[i]
         if mob ~= ch then
             if mob.is_npc then
-                ctx:send("{bright_cyan}" .. mob.proto.long_description:gsub("%s+$", "") .. "{reset}")
+                ctx:send("{bright_cyan}" .. mob.proto.long_desc:gsub("%s+$", "") .. "{reset}")
             else
                 ctx:send(mob.name .. "이(가) 서 있습니다.")
             end

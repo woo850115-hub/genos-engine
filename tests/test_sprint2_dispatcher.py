@@ -18,16 +18,14 @@ def _make_world():
     w = World()
     room1 = RoomProto(
         vnum=3001, name="신전", description="넓은 신전입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[Exit(direction=0, to_room=3002)],
-        extra_descs=[], trigger_vnums=[],
-    )
+        zone_vnum=30, sector=0, flags=[],
+        exits=[Exit(direction=0, to_vnum=3002)],
+        extra_descs=[], scripts=[], ext={})
     room2 = RoomProto(
         vnum=3002, name="길", description="좁은 길입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[Exit(direction=2, to_room=3001)],
-        extra_descs=[], trigger_vnums=[],
-    )
+        zone_vnum=30, sector=0, flags=[],
+        exits=[Exit(direction=2, to_vnum=3001)],
+        extra_descs=[], scripts=[], ext={})
     w.rooms[3001] = Room(proto=room1)
     w.rooms[3002] = Room(proto=room2)
     return w
@@ -71,13 +69,12 @@ def _make_engine_and_session(world=None):
     session.player_data = {"id": 1, "name": "테스터", "level": 1, "aliases": {}}
 
     proto = MobProto(
-        vnum=-1, keywords="테스터", short_description="테스터",
-        long_description="", detailed_description="",
-        level=1, hitroll=0, armor_class=100, hp_dice="0d0+0",
+        vnum=-1, keywords="테스터", short_desc="테스터",
+        long_desc="", detail_desc="",
+        level=1, hitroll=0, armor_class=100, max_hp=1,
         damage_dice="1d4+0", gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=0,
-        trigger_vnums=[],
-    )
+        act_flags=[], aff_flags=[], alignment=0, sex=0,
+        scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
     char = MobInstance(
         id=1, proto=proto, room_vnum=3001, hp=20, max_hp=20,
         player_id=1, player_name="테스터", session=session,

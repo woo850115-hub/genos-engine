@@ -85,7 +85,7 @@ async def do_level_up(char: MobInstance, send_fn=None) -> dict[str, int]:
     hp_lo, hp_hi = gains["hp"]
     hp_gain = random.randint(hp_lo, hp_hi) if hp_hi > 0 else 0
     # Constitution bonus
-    con_bonus = _con_hp_bonus(char.con)
+    con_bonus = _con_hp_bonus(char.stats.get("con", 13))
     hp_gain = max(1, hp_gain + con_bonus)
 
     mana_lo, mana_hi = gains["mana"]

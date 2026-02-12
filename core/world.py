@@ -51,129 +51,129 @@ class ExtraDesc:
 @dataclass(slots=True)
 class RoomProto:
     vnum: int
-    name: str
-    description: str
-    zone_vnum: int
-    sector: int
-    flags: list[str]             # ["dark","no_mob","indoors"]
-    exits: list[Exit]
-    extra_descs: list[ExtraDesc]
-    scripts: list[int]           # trigger vnums
-    ext: dict[str, Any]
+    name: str = ""
+    description: str = ""
+    zone_vnum: int = 0
+    sector: int = 0
+    flags: list[str] = field(default_factory=list)
+    exits: list[Exit] = field(default_factory=list)
+    extra_descs: list[ExtraDesc] = field(default_factory=list)
+    scripts: list[int] = field(default_factory=list)
+    ext: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
 class ItemProto:
     vnum: int
-    keywords: str
-    short_desc: str
-    long_desc: str
-    item_type: str               # "weapon","armor","potion",...
-    weight: int
-    cost: int
-    min_level: int
-    wear_slots: list[str]        # ["wield","body","head"]
-    flags: list[str]             # ["magic","no_drop","cursed"]
-    values: dict[str, Any]       # type-dependent: {"damage":"2d6+3","weapon_type":"slash"}
-    affects: list[dict[str, Any]]  # [{"stat":"str","mod":2}]
-    extra_descs: list[ExtraDesc]
-    scripts: list[int]
-    ext: dict[str, Any]
+    keywords: str = ""
+    short_desc: str = ""
+    long_desc: str = ""
+    item_type: str = "other"     # "weapon","armor","potion",...
+    weight: int = 0
+    cost: int = 0
+    min_level: int = 0
+    wear_slots: list[str] = field(default_factory=list)
+    flags: list[str] = field(default_factory=list)
+    values: dict[str, Any] = field(default_factory=dict)
+    affects: list[dict[str, Any]] = field(default_factory=list)
+    extra_descs: list[ExtraDesc] = field(default_factory=list)
+    scripts: list[int] = field(default_factory=list)
+    ext: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
 class MobProto:
     vnum: int
-    keywords: str
-    short_desc: str
-    long_desc: str
-    detail_desc: str
-    level: int
-    max_hp: int
-    max_mana: int
-    max_move: int
-    armor_class: int
-    hitroll: int
-    damroll: int
-    damage_dice: str             # "NdS+B"
-    gold: int
-    experience: int
-    alignment: int
-    sex: int
-    position: int
-    class_id: int
-    race_id: int
-    act_flags: list[str]         # ["sentinel","aggressive"]
-    aff_flags: list[str]         # ["invisible","sanctuary"]
-    stats: dict[str, Any]        # {"str":18,"dex":15,...}
-    skills: dict[str, Any]       # {"backstab":80}
-    scripts: list[int]
-    ext: dict[str, Any]
+    keywords: str = ""
+    short_desc: str = ""
+    long_desc: str = ""
+    detail_desc: str = ""
+    level: int = 1
+    max_hp: int = 1
+    max_mana: int = 0
+    max_move: int = 0
+    armor_class: int = 100
+    hitroll: int = 0
+    damroll: int = 0
+    damage_dice: str = "1d4+0"   # "NdS+B"
+    gold: int = 0
+    experience: int = 0
+    alignment: int = 0
+    sex: int = 0
+    position: int = 8
+    class_id: int = 0
+    race_id: int = 0
+    act_flags: list[str] = field(default_factory=list)
+    aff_flags: list[str] = field(default_factory=list)
+    stats: dict[str, Any] = field(default_factory=dict)
+    skills: dict[str, Any] = field(default_factory=dict)
+    scripts: list[int] = field(default_factory=list)
+    ext: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
 class Zone:
     vnum: int
-    name: str
-    builders: str
-    lifespan: int
-    reset_mode: int
-    flags: list[str]
-    resets: list[dict[str, Any]]
-    ext: dict[str, Any]
+    name: str = ""
+    builders: str = ""
+    lifespan: int = 30
+    reset_mode: int = 2
+    flags: list[str] = field(default_factory=list)
+    resets: list[dict[str, Any]] = field(default_factory=list)
+    ext: dict[str, Any] = field(default_factory=dict)
     age: int = 0  # ticks since last reset
 
 
 @dataclass(slots=True)
 class Shop:
-    vnum: int
-    keeper_vnum: int
-    room_vnum: int
-    buy_types: list[str]
-    buy_profit: float
-    sell_profit: float
-    hours: dict[str, int]
-    inventory: list[dict[str, Any]]
-    messages: dict[str, str]
-    ext: dict[str, Any]
+    vnum: int = 0
+    keeper_vnum: int = 0
+    room_vnum: int = 0
+    buy_types: list[str] = field(default_factory=list)
+    buy_profit: float = 1.1
+    sell_profit: float = 0.9
+    hours: dict[str, int] = field(default_factory=dict)
+    inventory: list[dict[str, Any]] = field(default_factory=list)
+    messages: dict[str, str] = field(default_factory=dict)
+    ext: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
 class GameClass:
-    id: int
-    name: str
-    abbrev: str
-    hp_gain: tuple[int, int]     # (min, max)
-    mana_gain: tuple[int, int]
-    move_gain: tuple[int, int]
-    base_stats: dict[str, Any]
-    ext: dict[str, Any]
+    id: int = 0
+    name: str = ""
+    abbrev: str = ""
+    hp_gain: tuple[int, int] = (1, 10)
+    mana_gain: tuple[int, int] = (0, 0)
+    move_gain: tuple[int, int] = (0, 0)
+    base_stats: dict[str, Any] = field(default_factory=dict)
+    ext: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
 class SkillProto:
-    id: int
-    name: str
-    skill_type: str              # "spell","skill","martial"
-    mana_cost: int
-    target: str                  # "char_room","self_only",...
-    violent: bool
-    min_position: int
-    routines: list[str]          # ["damage","affects"]
-    wearoff_msg: str
-    class_levels: dict[str, int]
-    ext: dict[str, Any]
+    id: int = 0
+    name: str = ""
+    skill_type: str = "spell"    # "spell","skill","martial"
+    mana_cost: int = 0
+    target: str = "ignore"       # "char_room","self_only",...
+    violent: bool = False
+    min_position: int = 0
+    routines: list[str] = field(default_factory=list)
+    wearoff_msg: str = ""
+    class_levels: dict[str, int] = field(default_factory=dict)
+    ext: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
 class RaceProto:
-    id: int
-    name: str
-    abbrev: str
-    stat_mods: dict[str, int]
-    body_parts: list[str]
-    size: str
-    ext: dict[str, Any]
+    id: int = 0
+    name: str = ""
+    abbrev: str = ""
+    stat_mods: dict[str, int] = field(default_factory=dict)
+    body_parts: list[str] = field(default_factory=list)
+    size: str = "medium"
+    ext: dict[str, Any] = field(default_factory=dict)
 
 
 # ── Runtime instances (mutable state) ────────────────────────────

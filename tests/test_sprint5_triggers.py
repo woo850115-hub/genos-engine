@@ -17,8 +17,8 @@ def _make_engine():
     eng.world = World()
     room_proto = RoomProto(
         vnum=3001, name="테스트 방", description="",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[], extra_descs=[], trigger_vnums=[100, 101],
+        zone_vnum=30, sector=0, flags=[],
+        exits=[], extra_descs=[], scripts=[100, 101],
     )
     eng.world.rooms[3001] = Room(proto=room_proto)
     return eng
@@ -103,12 +103,12 @@ class TestTriggerRuntime:
         eng = _make_engine()
         runtime = TriggerRuntime(eng)
         mob_proto = MobProto(
-            vnum=100, keywords="guard 경비병", short_description="경비병",
-            long_description="", detailed_description="",
-            level=10, hitroll=0, armor_class=0, hp_dice="5d8+30",
+            vnum=100, keywords="guard 경비병", short_desc="경비병",
+            long_desc="", detail_desc="",
+            level=10, hitroll=0, armor_class=0, max_hp=52,
             damage_dice="1d6+3", gold=50, experience=500,
-            action_flags=[], affect_flags=[], alignment=0, sex=0,
-            trigger_vnums=[200],
+            act_flags=[], aff_flags=[], alignment=0, sex=0,
+            scripts=[200],
         )
         mob = MobInstance(
             id=1, proto=mob_proto, room_vnum=3001, hp=50, max_hp=50,
@@ -146,18 +146,18 @@ class TestTriggerAPIs:
 
         room2_proto = RoomProto(
             vnum=3002, name="방2", description="",
-            zone_number=30, sector_type=0, room_flags=[],
-            exits=[], extra_descs=[], trigger_vnums=[],
+            zone_vnum=30, sector=0, flags=[],
+            exits=[], extra_descs=[], scripts=[],
         )
         eng.world.rooms[3002] = Room(proto=room2_proto)
 
         mob_proto = MobProto(
-            vnum=100, keywords="guard", short_description="경비병",
-            long_description="", detailed_description="",
-            level=10, hitroll=0, armor_class=0, hp_dice="5d8+30",
+            vnum=100, keywords="guard", short_desc="경비병",
+            long_desc="", detail_desc="",
+            level=10, hitroll=0, armor_class=0, max_hp=52,
             damage_dice="1d6+3", gold=50, experience=500,
-            action_flags=[], affect_flags=[], alignment=0, sex=0,
-            trigger_vnums=[],
+            act_flags=[], aff_flags=[], alignment=0, sex=0,
+            scripts=[],
         )
         mob = MobInstance(
             id=42, proto=mob_proto, room_vnum=3001, hp=50, max_hp=50,
@@ -174,12 +174,12 @@ class TestTriggerAPIs:
         runtime = TriggerRuntime(eng)
 
         mob_proto = MobProto(
-            vnum=100, keywords="guard", short_description="경비병",
-            long_description="", detailed_description="",
-            level=10, hitroll=0, armor_class=0, hp_dice="5d8+30",
+            vnum=100, keywords="guard", short_desc="경비병",
+            long_desc="", detail_desc="",
+            level=10, hitroll=0, armor_class=0, max_hp=52,
             damage_dice="1d6+3", gold=50, experience=500,
-            action_flags=[], affect_flags=[], alignment=0, sex=0,
-            trigger_vnums=[],
+            act_flags=[], aff_flags=[], alignment=0, sex=0,
+            scripts=[],
         )
         mob = MobInstance(
             id=43, proto=mob_proto, room_vnum=3001, hp=50, max_hp=50,
@@ -194,12 +194,12 @@ class TestTriggerAPIs:
         runtime = TriggerRuntime(eng)
 
         mob_proto = MobProto(
-            vnum=100, keywords="guard", short_description="경비병",
-            long_description="", detailed_description="",
-            level=10, hitroll=0, armor_class=0, hp_dice="5d8+30",
+            vnum=100, keywords="guard", short_desc="경비병",
+            long_desc="", detail_desc="",
+            level=10, hitroll=0, armor_class=0, max_hp=52,
             damage_dice="1d6+3", gold=50, experience=500,
-            action_flags=[], affect_flags=[], alignment=0, sex=0,
-            trigger_vnums=[],
+            act_flags=[], aff_flags=[], alignment=0, sex=0,
+            scripts=[],
         )
         mob = MobInstance(
             id=44, proto=mob_proto, room_vnum=3001, hp=30, max_hp=50,
@@ -214,12 +214,12 @@ class TestTriggerAPIs:
         runtime = TriggerRuntime(eng)
 
         mob_proto = MobProto(
-            vnum=100, keywords="guard", short_description="경비병",
-            long_description="", detailed_description="",
-            level=10, hitroll=0, armor_class=0, hp_dice="5d8+30",
+            vnum=100, keywords="guard", short_desc="경비병",
+            long_desc="", detail_desc="",
+            level=10, hitroll=0, armor_class=0, max_hp=52,
             damage_dice="1d6+3", gold=50, experience=500,
-            action_flags=[], affect_flags=[], alignment=0, sex=0,
-            trigger_vnums=[],
+            act_flags=[], aff_flags=[], alignment=0, sex=0,
+            scripts=[],
         )
         mob = MobInstance(
             id=45, proto=mob_proto, room_vnum=3001, hp=30, max_hp=50,

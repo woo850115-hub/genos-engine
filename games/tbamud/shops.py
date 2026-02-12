@@ -46,9 +46,14 @@ def _find_shop(engine: Engine, session) -> tuple:
 
 def _is_open(shop, hour: int = 12) -> bool:
     """Check if shop is open at given hour."""
-    if shop.open1 <= hour < shop.close1:
+    hours = shop.hours
+    open1 = hours.get("open1", 0)
+    close1 = hours.get("close1", 28)
+    open2 = hours.get("open2", 0)
+    close2 = hours.get("close2", 0)
+    if open1 <= hour < close1:
         return True
-    if shop.open2 <= hour < shop.close2:
+    if open2 <= hour < close2:
         return True
     return False
 
@@ -72,13 +77,14 @@ async def do_buy(session, args: str) -> None:
     char = session.character
     target_kw = args.strip().lower()
 
-    # Search shop's selling items
-    for item_vnum in shop.selling_items:
+    # Search shop's inventory (permanent stock)
+    for entry in shop.inventory:
+        item_vnum = entry.get("vnum") if isinstance(entry, dict) else entry
         proto = engine.world.item_protos.get(item_vnum)
         if not proto:
             continue
         if target_kw in proto.keywords.lower():
-            price = int(proto.cost * shop.profit_buy)
+            price = int(proto.cost * shop.buy_profit)
             if char.gold < price:
                 await session.send_line(
                     f"{keeper.name}이(가) '그건 {price} 골드입니다. 돈이 부족합니다.'라고 말합니다."
@@ -89,14 +95,14 @@ async def do_buy(session, args: str) -> None:
             char.gold -= price
             char.inventory.append(obj)
             await session.send_line(
-                f"{{bright_yellow}}{proto.short_description}을(를) {price} 골드에 구입했습니다.{{reset}}"
+                f"{{bright_yellow}}{proto.short_desc}을(를) {price} 골드에 구입했습니다.{{reset}}"
             )
             return
 
     # Also check keeper's inventory
     for obj in keeper.inventory:
         if target_kw in obj.proto.keywords.lower():
-            price = int(obj.proto.cost * shop.profit_buy)
+            price = int(obj.proto.cost * shop.buy_profit)
             if char.gold < price:
                 await session.send_line(
                     f"{keeper.name}이(가) '돈이 부족합니다.'라고 말합니다."
@@ -134,7 +140,7 @@ async def do_sell(session, args: str) -> None:
 
     for obj in char.inventory:
         if target_kw in obj.proto.keywords.lower():
-            price = int(obj.proto.cost * shop.profit_sell)
+            price = int(obj.proto.cost * shop.sell_profit)
             price = max(1, price)
             char.inventory.remove(obj)
             char.gold += price
@@ -163,18 +169,19 @@ async def do_list(session, args: str) -> None:
 
     # Permanent stock items
     idx = 1
-    for item_vnum in shop.selling_items:
+    for entry in shop.inventory:
+        item_vnum = entry.get("vnum") if isinstance(entry, dict) else entry
         proto = engine.world.item_protos.get(item_vnum)
         if not proto:
             continue
-        price = int(proto.cost * shop.profit_buy)
+        price = int(proto.cost * shop.buy_profit)
         type_name = ITEM_TYPE_NAMES.get(proto.item_type, "기타")
-        lines.append(f"  {idx}. {proto.short_description} [{type_name}] — {price} 골드 (무한)")
+        lines.append(f"  {idx}. {proto.short_desc} [{type_name}] — {price} 골드 (무한)")
         idx += 1
 
     # Keeper's inventory
     for obj in keeper.inventory:
-        price = int(obj.proto.cost * shop.profit_buy)
+        price = int(obj.proto.cost * shop.buy_profit)
         type_name = ITEM_TYPE_NAMES.get(obj.proto.item_type, "기타")
         lines.append(f"  {idx}. {obj.name} [{type_name}] — {price} 골드")
         idx += 1
@@ -202,7 +209,7 @@ async def do_appraise(session, args: str) -> None:
 
     for obj in char.inventory:
         if target_kw in obj.proto.keywords.lower():
-            price = int(obj.proto.cost * shop.profit_sell)
+            price = int(obj.proto.cost * shop.sell_profit)
             price = max(1, price)
             await session.send_line(
                 f"{keeper.name}이(가) '{obj.name}은(는) {price} 골드에 사겠습니다.'라고 말합니다."

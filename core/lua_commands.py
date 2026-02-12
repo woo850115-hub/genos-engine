@@ -531,22 +531,21 @@ class CommandContext:
         if room and char in room.characters:
             room.characters.remove(char)
 
-    def equip(self, obj: Any, slot: int) -> None:
+    def equip(self, obj: Any, slot: int | str) -> None:
         char = self._session.character
         if char and obj:
             obj.worn_by = char
-            obj.wear_pos = int(slot)
-            char.equipment[int(slot)] = obj
+            obj.wear_slot = str(slot) if isinstance(slot, str) else str(slot)
+            char.equipment[slot] = obj
 
-    def unequip(self, slot: int) -> Any:
+    def unequip(self, slot: int | str) -> Any:
         char = self._session.character
         if not char:
             return None
-        slot = int(slot)
         obj = char.equipment.pop(slot, None)
         if obj:
             obj.worn_by = None
-            obj.wear_pos = -1
+            obj.wear_slot = ""
             char.inventory.append(obj)
         return obj
 
@@ -695,20 +694,20 @@ class CommandContext:
 
     # ── Zone / World search ────────────────────────────────────────
 
-    def get_zone_chars(self, zone_number: int | None = None, keyword: str | None = None) -> Any:
+    def get_zone_chars(self, zone_vnum: int | None = None, keyword: str | None = None) -> Any:
         """Get characters in the same zone. Returns Lua table of {char, room_name}."""
         char = self._session.character
         if not char:
             return self._to_lua_table([])
-        if zone_number is None:
+        if zone_vnum is None:
             room = self._engine.world.get_room(char.room_vnum)
             if not room:
                 return self._to_lua_table([])
-            zone_number = room.proto.zone_number
+            zone_vnum = room.proto.zone_vnum
         kw = str(keyword).lower() if keyword else None
         results = []
         for rm in self._engine.world.rooms.values():
-            if rm.proto.zone_number != int(zone_number):
+            if rm.proto.zone_vnum != int(zone_vnum):
                 continue
             for ch in rm.characters:
                 if ch is char:
@@ -732,7 +731,7 @@ class CommandContext:
     def find_shop(self) -> Any:
         """Find shop in current room. Returns (shop_info_table, keeper_mob) or (nil, nil).
 
-        shop_info is a Lua-friendly table with selling_items as Lua table.
+        shop_info is a Lua-friendly table with inventory as Lua table.
         """
         char = self._session.character
         if not char:
@@ -743,15 +742,23 @@ class CommandContext:
         for mob in room.characters:
             if mob.is_npc and mob.proto.vnum in self._engine.world.shops:
                 shop = self._engine.world.shops[mob.proto.vnum]
+                # Extract vnums from inventory entries
+                inv_vnums = []
+                for entry in shop.inventory:
+                    if isinstance(entry, dict):
+                        inv_vnums.append(entry.get("vnum", 0))
+                    else:
+                        inv_vnums.append(entry)
+                hours = shop.hours
                 # Build Lua-friendly table
                 info = {
-                    "selling_items": self._to_lua_table(list(shop.selling_items)),
-                    "profit_buy": shop.profit_buy,
-                    "profit_sell": shop.profit_sell,
-                    "open1": shop.open1,
-                    "close1": shop.close1,
-                    "open2": shop.open2,
-                    "close2": shop.close2,
+                    "selling_items": self._to_lua_table(inv_vnums),
+                    "profit_buy": shop.buy_profit,
+                    "profit_sell": shop.sell_profit,
+                    "open1": hours.get("open1", 0),
+                    "close1": hours.get("close1", 28),
+                    "open2": hours.get("open2", 0),
+                    "close2": hours.get("close2", 0),
                 }
                 if self._lua:
                     return self._lua.table_from(info), mob

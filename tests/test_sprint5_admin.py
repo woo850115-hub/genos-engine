@@ -19,32 +19,32 @@ def _make_world():
     w = World()
     room1 = RoomProto(
         vnum=3001, name="광장", description="넓은 광장입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[], extra_descs=[], trigger_vnums=[100],
+        zone_vnum=30, sector=0, flags=[],
+        exits=[], extra_descs=[], scripts=[100],
     )
     room2 = RoomProto(
         vnum=3002, name="상점", description="작은 상점입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[], extra_descs=[], trigger_vnums=[],
+        zone_vnum=30, sector=0, flags=[],
+        exits=[], extra_descs=[], scripts=[],
     )
     w.rooms[3001] = Room(proto=room1)
     w.rooms[3002] = Room(proto=room2)
 
     mob_proto = MobProto(
-        vnum=100, keywords="guard 경비병", short_description="경비병",
-        long_description="경비병이 서 있습니다.", detailed_description="",
-        level=10, hitroll=0, armor_class=0, hp_dice="5d8+30",
+        vnum=100, keywords="guard 경비병", short_desc="경비병",
+        long_desc="경비병이 서 있습니다.", detail_desc="",
+        level=10, hitroll=0, armor_class=0, max_hp=52,
         damage_dice="1d6+3", gold=50, experience=500,
-        action_flags=[], affect_flags=[], alignment=0, sex=0,
-        trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=0,
+        scripts=[],
     )
     w.mob_protos[100] = mob_proto
 
     item_proto = ItemProto(
-        vnum=200, keywords="sword 검", short_description="멋진 검",
-        long_description="멋진 검이 놓여있습니다.", item_type=5,
-        extra_flags=[], wear_flags=[], values=[0, 0, 0, 3],
-        weight=10, cost=100, rent=10, affects=[], extra_descs=[], trigger_vnums=[],
+        vnum=200, keywords="sword 검", short_desc="멋진 검",
+        long_desc="멋진 검이 놓여있습니다.", item_type="weapon",
+        flags=[], wear_slots=[], values={},
+        weight=10, cost=100, affects=[], extra_descs=[], scripts=[],
     )
     w.item_protos[200] = item_proto
     return w
@@ -72,11 +72,11 @@ def _make_engine_session(world, level=34):
     session.player_data = {"id": 1, "name": "관리자", "level": level, "aliases": {}}
 
     proto = MobProto(
-        vnum=-1, keywords="관리자", short_description="관리자",
-        long_description="", detailed_description="",
-        level=level, hitroll=0, armor_class=100, hp_dice="0d0+0",
+        vnum=-1, keywords="관리자", short_desc="관리자",
+        long_desc="", detail_desc="",
+        level=level, hitroll=0, armor_class=100, max_hp=1,
         damage_dice="1d4+0", gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+        act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
     )
     char = MobInstance(
         id=1, proto=proto, room_vnum=3001, hp=100, max_hp=100,
@@ -96,11 +96,11 @@ class TestIsAdmin:
     def test_is_admin_true(self):
         session = MagicMock()
         proto = MobProto(
-            vnum=-1, keywords="t", short_description="t",
-            long_description="", detailed_description="",
-            level=34, hitroll=0, armor_class=100, hp_dice="0d0+0",
+            vnum=-1, keywords="t", short_desc="t",
+            long_desc="", detail_desc="",
+            level=34, hitroll=0, armor_class=100, max_hp=1,
             damage_dice="1d4+0", gold=0, experience=0,
-            action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+            act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
         )
         session.character = MobInstance(
             id=1, proto=proto, room_vnum=3001, hp=100, max_hp=100,
@@ -111,11 +111,11 @@ class TestIsAdmin:
     def test_is_admin_false(self):
         session = MagicMock()
         proto = MobProto(
-            vnum=-1, keywords="t", short_description="t",
-            long_description="", detailed_description="",
-            level=10, hitroll=0, armor_class=100, hp_dice="0d0+0",
+            vnum=-1, keywords="t", short_desc="t",
+            long_desc="", detail_desc="",
+            level=10, hitroll=0, armor_class=100, max_hp=1,
             damage_dice="1d4+0", gold=0, experience=0,
-            action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+            act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
         )
         session.character = MobInstance(
             id=1, proto=proto, room_vnum=3001, hp=100, max_hp=100,
@@ -359,11 +359,11 @@ class TestRestore:
 
         # Add another player character
         proto2 = MobProto(
-            vnum=-1, keywords="테스터", short_description="테스터",
-            long_description="", detailed_description="",
-            level=10, hitroll=0, armor_class=100, hp_dice="0d0+0",
+            vnum=-1, keywords="테스터", short_desc="테스터",
+            long_desc="", detail_desc="",
+            level=10, hitroll=0, armor_class=100, max_hp=1,
             damage_dice="1d4+0", gold=0, experience=0,
-            action_flags=[], affect_flags=[], alignment=0, sex=0, trigger_vnums=[],
+            act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
         )
         target = MobInstance(
             id=2, proto=proto2, room_vnum=3001, hp=10, max_hp=100,

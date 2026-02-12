@@ -32,27 +32,25 @@ def _make_session(char=None, world=None, engine=None):
     return session
 
 
-def _make_item(vnum=100, wear_flags=None, keywords="검"):
+def _make_item(vnum=100, wear_slots=None, keywords="검"):
     proto = ItemProto(
         vnum=vnum, keywords=keywords,
-        short_description=f"테스트 {keywords}",
-        long_description=f"테스트 {keywords}이(가) 놓여 있습니다.",
-        item_type=5, extra_flags=[], wear_flags=wear_flags or [4],
-        values=[0, 3, 8, 0], weight=5, cost=100, rent=10,
-        affects=[], extra_descs=[], trigger_vnums=[],
-    )
-    return ObjInstance(id=_next_id(), proto=proto, values=list(proto.values))
+        short_desc=f"테스트 {keywords}",
+        long_desc=f"테스트 {keywords}이(가) 놓여 있습니다.",
+        item_type="weapon", flags=[], wear_slots=wear_slots or ["4"],
+        values={}, weight=5, cost=100,
+        affects=[], extra_descs=[], scripts=[], min_level=0, ext={})
+    return ObjInstance(id=_next_id(), proto=proto, values=dict(proto.values))
 
 
 def _make_char(room_vnum=1):
     proto = MobProto(
-        vnum=-1, keywords="player", short_description="테스터",
-        long_description="", detailed_description="",
+        vnum=-1, keywords="player", short_desc="테스터",
+        long_desc="", detail_desc="",
         level=10, hitroll=5, armor_class=50,
-        hp_dice="0d0+100", damage_dice="1d6+2",
+        max_hp=100, damage_dice="1d6+2",
         gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=1, trigger_vnums=[],
-    )
+        act_flags=[], aff_flags=[], alignment=0, sex=1, scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
     return MobInstance(
         id=_next_id(), proto=proto, room_vnum=room_vnum,
         hp=100, max_hp=100, player_id=1, player_name="테스터",
@@ -74,7 +72,7 @@ class TestWearCommand:
     async def test_wear_item(self):
         items = _import_items()
         char = _make_char()
-        sword = _make_item(wear_flags=[4])  # 갑옷 슬롯
+        sword = _make_item(wear_slots=["4"])  # 갑옷 슬롯
         char.inventory.append(sword)
         sword.carried_by = char
 
@@ -99,7 +97,7 @@ class TestWearCommand:
 
         ring_slots = [9, 13, 14, 15, 16, 17, 18, 19, 20, 21]
         for i, expected_slot in enumerate(ring_slots):
-            ring = _make_item(vnum=200 + i, wear_flags=[9], keywords=f"반지{i+1}")
+            ring = _make_item(vnum=200 + i, wear_slots=["9"], keywords=f"반지{i+1}")
             char.inventory.append(ring)
             ring.carried_by = char
 
@@ -118,7 +116,7 @@ class TestRemoveCommand:
         sword = _make_item()
         char.equipment[4] = sword
         sword.worn_by = char
-        sword.wear_pos = 4
+        sword.wear_slot = "4"
 
         session = _make_session(char=char)
         await items.do_remove(session, "검")
@@ -140,9 +138,8 @@ class TestGetDropCommands:
         world = World()
         room_proto = RoomProto(
             vnum=1, name="Test", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[], extra_descs=[], scripts=[], ext={})
         world.rooms[1] = Room(proto=room_proto)
 
         char = _make_char(room_vnum=1)
@@ -164,9 +161,8 @@ class TestGetDropCommands:
         world = World()
         room_proto = RoomProto(
             vnum=1, name="Test", description="",
-            zone_number=0, sector_type=0, room_flags=[],
-            exits=[], extra_descs=[], trigger_vnums=[],
-        )
+            zone_vnum=0, sector=0, flags=[],
+            exits=[], extra_descs=[], scripts=[], ext={})
         world.rooms[1] = Room(proto=room_proto)
 
         char = _make_char(room_vnum=1)

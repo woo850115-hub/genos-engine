@@ -104,14 +104,14 @@ async def do_wear(session: Session, args: str) -> None:
 
     for obj in char.inventory:
         if target in obj.proto.keywords.lower():
-            # Find first available wear position from obj's wear_flags
-            wear_flags = obj.proto.wear_flags
-            if not wear_flags or wear_flags == [0]:
+            # Find first available wear position from obj's wear_slots
+            wear_slots = obj.proto.wear_slots
+            if not wear_slots or wear_slots == [0]:
                 await session.send_line("그것은 착용할 수 없습니다.")
                 return
             # Simple: use first wear flag > 0 as position
             pos = -1
-            for flag in wear_flags:
+            for flag in wear_slots:
                 if flag > 0 and flag < len(WEAR_NAMES):
                     if flag not in char.equipment:
                         pos = flag
@@ -122,7 +122,7 @@ async def do_wear(session: Session, args: str) -> None:
             char.inventory.remove(obj)
             obj.carried_by = None
             obj.worn_by = char
-            obj.wear_pos = pos
+            obj.wear_slot = pos
             char.equipment[pos] = obj
             pos_name = WEAR_NAMES[pos] if pos < len(WEAR_NAMES) else "어딘가에"
             await session.send_line(f"{obj.name}을(를) {pos_name} 착용했습니다.")
@@ -145,7 +145,7 @@ async def do_remove(session: Session, args: str) -> None:
         if target in obj.proto.keywords.lower():
             del char.equipment[pos]
             obj.worn_by = None
-            obj.wear_pos = -1
+            obj.wear_slot = -1
             obj.carried_by = char
             char.inventory.append(obj)
             await session.send_line(f"{obj.name}을(를) 벗었습니다.")

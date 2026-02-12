@@ -38,16 +38,14 @@ def _make_engine_with_rooms():
     # Room 1 → Room 2 via north
     room1_proto = RoomProto(
         vnum=3001, name="신전", description="광대한 신전입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[Exit(direction=0, to_room=3002)],
-        extra_descs=[], trigger_vnums=[],
-    )
+        zone_vnum=30, sector=0, flags=[],
+        exits=[Exit(direction=0, to_vnum=3002)],
+        extra_descs=[], scripts=[], ext={})
     room2_proto = RoomProto(
         vnum=3002, name="길", description="좁은 길입니다.",
-        zone_number=30, sector_type=0, room_flags=[],
-        exits=[Exit(direction=2, to_room=3001)],
-        extra_descs=[], trigger_vnums=[],
-    )
+        zone_vnum=30, sector=0, flags=[],
+        exits=[Exit(direction=2, to_vnum=3001)],
+        extra_descs=[], scripts=[], ext={})
     world.rooms[3001] = Room(proto=room1_proto)
     world.rooms[3002] = Room(proto=room2_proto)
     return world
@@ -62,13 +60,12 @@ def _make_session(engine, room_vnum=3001):
     session.player_data = {"id": 1, "name": "테스터", "level": 1, "class_id": 0}
 
     proto = MobProto(
-        vnum=-1, keywords="테스터", short_description="테스터",
-        long_description="", detailed_description="",
-        level=1, hitroll=0, armor_class=100, hp_dice="0d0+0",
+        vnum=-1, keywords="테스터", short_desc="테스터",
+        long_desc="", detail_desc="",
+        level=1, hitroll=0, armor_class=100, max_hp=1,
         damage_dice="1d4+0", gold=0, experience=0,
-        action_flags=[], affect_flags=[], alignment=0, sex=0,
-        trigger_vnums=[],
-    )
+        act_flags=[], aff_flags=[], alignment=0, sex=0,
+        scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
     char = MobInstance(
         id=1, proto=proto, room_vnum=room_vnum,
         hp=20, max_hp=20, player_id=1, player_name="테스터",
@@ -184,22 +181,19 @@ class TestZoneReset:
         world = _make_engine_with_rooms()
         # Add mob proto
         mob_proto = MobProto(
-            vnum=100, keywords="rat", short_description="A rat",
-            long_description="A rat scurries.", detailed_description="",
-            level=1, hitroll=0, armor_class=100, hp_dice="1d4+2",
+            vnum=100, keywords="rat", short_desc="A rat",
+            long_desc="A rat scurries.", detail_desc="",
+            level=1, hitroll=0, armor_class=100, max_hp=4,
             damage_dice="1d2+0", gold=0, experience=5,
-            action_flags=[], affect_flags=[], alignment=0, sex=0,
-            trigger_vnums=[],
-        )
+            act_flags=[], aff_flags=[], alignment=0, sex=0,
+            scripts=[], max_mana=0, max_move=0, damroll=0, position=8, class_id=0, race_id=0, stats={}, skills={}, ext={})
         world.mob_protos[100] = mob_proto
 
         zone = Zone(
-            vnum=30, name="Test Zone", builders="", lifespan=30,
-            bot=3001, top=3002, reset_mode=2, zone_flags=[],
-            reset_commands=[
+            vnum=30, name="Test Zone", builders="", lifespan=30, reset_mode=2, flags=[],
+            resets=[
                 {"command": "M", "if_flag": 0, "arg1": 100, "arg2": 5, "arg3": 3001},
-            ],
-        )
+            ], ext={})
         world.zones.append(zone)
 
         real_engine = Engine.__new__(Engine)
