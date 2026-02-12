@@ -27,8 +27,7 @@ def register(engine: Engine) -> None:
     engine.register_command("wear", do_wear, korean="입")
     engine.register_command("wield", do_wear)
     engine.register_command("remove", do_remove, korean="벗")
-    engine.register_command("equipment", do_equipment, korean="장비")
-    engine.register_command("eq", do_equipment)
+    # equipment/eq is registered in info.py with original tbaMUD format
     engine.register_command("give", do_give, korean="줘")
     engine.register_command("put", do_put, korean="넣")
 

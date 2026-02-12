@@ -352,7 +352,7 @@ class TestScoreE2E:
         info = _import("commands.info")
         char = _make_pc()
         _, session = _make_engine_session(char=char)
-        await info.do_wscore(session, "")
+        await info.do_score(session, "")
 
         output = session.send_line.call_args[0][0]
         assert "체력" in output or "정보" in output
@@ -626,16 +626,17 @@ class TestPluginE2E:
         game = _import("game")
         plugin = game.create_plugin()
         banner = plugin.welcome_banner()
-        assert "십웅기" in banner
+        assert "호랭이" in banner or "십웅기" in banner
 
     def test_plugin_register_commands(self):
+        """register_commands is now no-op (Lua provides all commands)."""
         game = _import("game")
         plugin = game.create_plugin()
         engine = MagicMock()
         engine.register_command = MagicMock()
         plugin.register_commands(engine)
-        # Should register multiple commands
-        assert engine.register_command.call_count >= 10
+        # Should be no-op — Lua handles all commands now
+        assert engine.register_command.call_count == 0
 
     def test_plugin_initial_state(self):
         game = _import("game")

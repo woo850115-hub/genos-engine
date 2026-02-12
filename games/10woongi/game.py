@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -22,12 +23,8 @@ class WoongiPlugin:
     name = "10woongi"
 
     def register_commands(self, engine: Engine) -> None:
-        """Register 10woongi-specific commands."""
-        _import("commands.info").register(engine)
-        _import("commands.comm").register(engine)
-        _import("commands.items").register(engine)
-        _import("commands.movement").register(engine)
-        _import("commands.admin").register(engine)
+        """No-op — all commands now provided by Lua scripts."""
+        pass
 
     def get_initial_state(self) -> Any:
         """Return 10woongi-specific login initial state."""
@@ -35,44 +32,38 @@ class WoongiPlugin:
         return login.WoongiGetNameState()
 
     def welcome_banner(self) -> str:
-        """Return 10woongi welcome banner."""
+        """Return original 10woongi getLogo() ASCII art banner."""
+        banner_file = Path(__file__).resolve().parent.parent.parent / "data" / "10woongi" / "banner.txt"
+        try:
+            return "\r\n" + banner_file.read_text(encoding="utf-8") + "\r\n"
+        except FileNotFoundError:
+            return (
+                "\r\n{cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}\r\n"
+                "   {bold}{yellow}십웅기 (10woongi){reset}\r\n"
+                "   무협 머드 게임 서버\r\n"
+                "{cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}\r\n\r\n"
+            )
+
+    def playing_prompt(self, session: Any) -> str:
+        """10woongi wuxia-style prompt: < 체력:20/20 내력:80/80 이동:50/50 >"""
+        c = session.character
+        # 10woongi: move=SP(내력), mana=MP(이동력)
         return (
-            "\r\n{cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}\r\n"
-            "   {bold}{yellow}십웅기 (10woongi){reset}\r\n"
-            "   무협 머드 게임 서버\r\n"
-            "{cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}\r\n\r\n"
+            f"\n< {{red}}체력:{c.hp}/{c.max_hp}{{reset}} "
+            f"{{cyan}}내력:{c.move}/{c.max_move}{{reset}} "
+            f"{{yellow}}이동:{c.mana}/{c.max_mana}{{reset}} > "
         )
 
-    async def combat_round(self, engine: Engine) -> None:
-        """Process one sigma-based combat round (1 second)."""
-        sigma = _import("combat.sigma")
+    async def handle_death(self, engine: Engine, victim: Any, killer: Any = None) -> None:
+        """Delegate to 10woongi death handler (called by deferred death)."""
         death = _import("combat.death")
-
-        processed: set[int] = set()
-        for room in engine.world.rooms.values():
-            for char in list(room.characters):
-                if char.id in processed or not char.fighting:
-                    continue
-                if char.position < engine.POS_FIGHTING:
-                    char.fighting = None
-                    continue
-                if char.fighting.hp <= 0:
-                    char.fighting = None
-                    continue
-
-                processed.add(char.id)
-                char.position = engine.POS_FIGHTING
-                target = char.fighting
-
-                await sigma.perform_attack(
-                    char, target,
-                    send_to_char=engine._send_to_char,
-                )
-
-                if target.hp <= 0:
-                    char.fighting = None
-                    char.position = engine.POS_STANDING
-                    await death.handle_death(engine, target, killer=char)
+        await death.handle_death(engine, victim, killer=killer)
+        # Level up check for killer
+        if killer and not killer.is_npc:
+            level_mod = _import("level")
+            if level_mod.check_level_up(killer):
+                send_fn = killer.session.send_line if killer.session else None
+                await level_mod.do_level_up(killer, send_fn=send_fn)
 
     async def tick_affects(self, engine: Engine) -> None:
         """Tick healing for all characters — HP 8%, SP 9%, MP 13%."""

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -13,22 +14,46 @@ class TbaMudPlugin:
 
     name = "tbamud"
 
+    def welcome_banner(self) -> str:
+        """Return original tbaMUD greetings screen."""
+        banner_file = Path(__file__).resolve().parent.parent.parent / "data" / "tbamud" / "banner.txt"
+        try:
+            return banner_file.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return (
+                "\r\n{cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}\r\n"
+                "   {bold}{yellow}GenOS tbaMUD-KR{reset}\r\n"
+                "   한국어 머드 게임 서버\r\n"
+                "{cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}\r\n\r\n"
+            )
+
     def register_commands(self, engine: Engine) -> None:
-        """Register tbaMUD-specific commands."""
-        from games.tbamud.commands.info import register as reg_info
-        from games.tbamud.commands.comm import register as reg_comm
-        from games.tbamud.commands.items import register as reg_items
-        from games.tbamud.commands.movement import register as reg_move
-        from games.tbamud.commands.admin import register as reg_admin
+        """All tbaMUD commands are now provided by Lua scripts.
 
-        from games.tbamud.shops import register as reg_shops
+        Lua scripts in games/tbamud/lua/commands/ are loaded by the engine's
+        Lua runtime after this method is called, overriding common commands
+        with tbaMUD-specific implementations.
+        """
+        pass
 
-        reg_info(engine)
-        reg_comm(engine)
-        reg_items(engine)
-        reg_move(engine)
-        reg_shops(engine)
-        reg_admin(engine)
+
+    async def handle_death(self, engine: Engine, victim: Any, killer: Any = None) -> None:
+        """Delegate to tbaMUD death handler (called by deferred death)."""
+        from games.tbamud.combat.death import handle_death
+        from games.tbamud.level import check_level_up, do_level_up
+        await handle_death(engine, victim, killer=killer)
+        if killer and not killer.is_npc and check_level_up(killer):
+            send_fn = killer.session.send_line if killer.session else None
+            await do_level_up(killer, send_fn=send_fn)
+
+    def playing_prompt(self, session: Any) -> str:
+        """tbaMUD-style prompt: < 20hp 100mn 82mv >"""
+        c = session.character
+        return (
+            f"\n< {{green}}{c.hp}{{reset}}/{{green}}{c.max_hp}hp{{reset}} "
+            f"{{cyan}}{c.mana}{{reset}}/{{cyan}}{c.max_mana}mn{{reset}} "
+            f"{{yellow}}{c.move}{{reset}}/{{yellow}}{c.max_move}mv{{reset}} > "
+        )
 
 
 def create_plugin() -> TbaMudPlugin:

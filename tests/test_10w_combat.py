@@ -223,8 +223,8 @@ class TestHandleDeath:
 
 
 class TestCombatRound:
-    async def test_plugin_combat_round(self):
-        """WoongiPlugin.combat_round processes fighting characters."""
+    async def test_plugin_handle_death(self):
+        """WoongiPlugin.handle_death awards exp and removes NPC."""
         game = _import_game()
         plugin = game.create_plugin()
 
@@ -236,37 +236,30 @@ class TestCombatRound:
         )
         world.rooms[1] = Room(proto=room_proto)
 
-        attacker = _make_mob(vnum=1, level=10, hp=500, hitroll=50)
-        attacker.position = 7  # POS_FIGHTING
-        attacker.extensions = {"stats": {"spirit": 50, "stamina": 20,
-                                          "agility": 13, "wisdom": 13,
-                                          "bone": 13, "inner": 20}}
+        killer = _make_mob(vnum=1, level=10, hp=500)
+        killer.player_id = 1
+        killer.player_name = "테스터"
+        killer.session = MagicMock()
+        killer.session.send_line = AsyncMock()
 
-        defender = _make_mob(vnum=2, level=5, hp=500)
-        defender.position = 7
+        victim = _make_mob(vnum=2, level=5, hp=0)
+        victim.gold = 50
 
-        attacker.fighting = defender
-        defender.fighting = attacker
-
-        world.rooms[1].characters.extend([attacker, defender])
+        world.rooms[1].characters.extend([killer, victim])
 
         engine = MagicMock()
         engine.world = world
-        engine.POS_FIGHTING = 7
-        engine.POS_STANDING = 8
-        engine._send_to_char = AsyncMock()
         engine.config = {"world": {"void_room": 1854941986}}
+        engine.do_look = AsyncMock()
 
-        initial_hp = defender.hp
-        await plugin.combat_round(engine)
+        initial_exp = killer.experience
+        await plugin.handle_death(engine, victim, killer=killer)
 
-        # Defender should have taken some damage (probabilistic)
-        # Run multiple rounds to ensure at least one hit
-        for _ in range(10):
-            if defender.hp <= 0:
-                break
-            attacker.fighting = defender
-            await plugin.combat_round(engine)
+        # NPC should be removed from room
+        assert victim not in world.rooms[1].characters
+        # Killer should gain exp and gold
+        assert killer.experience > initial_exp
+        assert killer.gold >= 50
 
 
 class TestHealingTick:

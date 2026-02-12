@@ -54,14 +54,19 @@ class Session:
 
     async def run(self) -> None:
         """Main session loop — drives the state machine."""
+        log.debug("Session.run() started for conn #%d", self.conn.id)
         # Set initial state — plugin can override login flow
         plugin = getattr(self.engine, "_plugin", None)
         if plugin and hasattr(plugin, "get_initial_state"):
             self.state = plugin.get_initial_state()
         else:
             self.state = GetNameState()
-        await self.send_line(self._welcome_banner())
+        banner = self._welcome_banner()
+        log.debug("Sending banner (%d bytes) to conn #%d", len(banner), self.conn.id)
+        await self.send_line(banner)
+        log.debug("Banner sent, sending prompt to conn #%d", self.conn.id)
         await self.send(self.state.prompt())
+        log.debug("Prompt sent to conn #%d", self.conn.id)
 
         while not self._closed and not self.conn.closed:
             try:
@@ -77,7 +82,7 @@ class Session:
             next_state = await self.state.on_input(self, text)
             if next_state is not None:
                 self.state = next_state
-                await self.send(self.state.prompt())
+            await self.send(self._get_prompt())
 
         await self._disconnect()
 
@@ -120,8 +125,6 @@ class Session:
         # Show room
         await self.engine.do_look(self, "")
 
-        await self.send(self.state.prompt())
-
     async def _disconnect(self) -> None:
         if self.character:
             await self.save_character()
@@ -143,6 +146,23 @@ class Session:
             "gold": c.gold,
         }
         await self.db.save_player(c.player_id, data)
+
+    def _get_prompt(self) -> str:
+        """Get prompt — plugin can override for playing state."""
+        if isinstance(self.state, PlayingState) and self.character:
+            plugin = getattr(self.engine, "_plugin", None)
+            if plugin and hasattr(plugin, "playing_prompt"):
+                return plugin.playing_prompt(self)
+            # Default prompt with stats
+            c = self.character
+            return (
+                f"\n< {c.hp}/{c.max_hp}hp "
+                f"{c.mana}/{c.max_mana}mn "
+                f"{c.move}/{c.max_move}mv > "
+            )
+        if self.state:
+            return self.state.prompt()
+        return ""
 
     def _welcome_banner(self) -> str:
         plugin = getattr(self.engine, "_plugin", None)

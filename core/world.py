@@ -1,9 +1,18 @@
-"""World model — Prototype/Instance data structures + boot-time loading."""
+"""World model — Prototype/Instance data structures + boot-time loading.
+
+GenOS Unified Schema v1.0:
+  - Proto/Instance separation
+  - TEXT[] tag flags (not int bitfields)
+  - JSONB stats/values (dynamic, game-specific)
+  - room_exits separate table (graph model)
+  - wear_slots TEXT[] (dynamic equipment slots)
+"""
 
 from __future__ import annotations
 
 import json
 import logging
+import random
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -16,12 +25,21 @@ log = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class Exit:
-    direction: int  # 0=N, 1=E, 2=S, 3=W, 4=U, 5=D
-    to_room: int
+    direction: int  # 0=N, 1=E, 2=S, 3=W, 4=U, 5=D, 6~10=extended
+    to_vnum: int
     keywords: str = ""
     description: str = ""
-    door_flags: int = 0
     key_vnum: int = -1
+    flags: tuple[str, ...] = ()  # ("door","locked","pickproof")
+
+    @property
+    def has_door(self) -> bool:
+        return "door" in self.flags
+
+    @property
+    def to_room(self) -> int:
+        """Backward-compat alias."""
+        return self.to_vnum
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,51 +53,62 @@ class RoomProto:
     vnum: int
     name: str
     description: str
-    zone_number: int
-    sector_type: int
-    room_flags: list[int]
+    zone_vnum: int
+    sector: int
+    flags: list[str]             # ["dark","no_mob","indoors"]
     exits: list[Exit]
     extra_descs: list[ExtraDesc]
-    trigger_vnums: list[int]
+    scripts: list[int]           # trigger vnums
+    ext: dict[str, Any]
 
 
 @dataclass(slots=True)
 class ItemProto:
     vnum: int
     keywords: str
-    short_description: str
-    long_description: str
-    item_type: int
-    extra_flags: list[int]
-    wear_flags: list[int]
-    values: list[int]
+    short_desc: str
+    long_desc: str
+    item_type: str               # "weapon","armor","potion",...
     weight: int
     cost: int
-    rent: int
-    affects: list[dict[str, Any]]
+    min_level: int
+    wear_slots: list[str]        # ["wield","body","head"]
+    flags: list[str]             # ["magic","no_drop","cursed"]
+    values: dict[str, Any]       # type-dependent: {"damage":"2d6+3","weapon_type":"slash"}
+    affects: list[dict[str, Any]]  # [{"stat":"str","mod":2}]
     extra_descs: list[ExtraDesc]
-    trigger_vnums: list[int]
+    scripts: list[int]
+    ext: dict[str, Any]
 
 
 @dataclass(slots=True)
 class MobProto:
     vnum: int
     keywords: str
-    short_description: str
-    long_description: str
-    detailed_description: str
+    short_desc: str
+    long_desc: str
+    detail_desc: str
     level: int
-    hitroll: int
+    max_hp: int
+    max_mana: int
+    max_move: int
     armor_class: int
-    hp_dice: str  # "NdS+B"
-    damage_dice: str
+    hitroll: int
+    damroll: int
+    damage_dice: str             # "NdS+B"
     gold: int
     experience: int
-    action_flags: list[int]
-    affect_flags: list[int]
     alignment: int
     sex: int
-    trigger_vnums: list[int]
+    position: int
+    class_id: int
+    race_id: int
+    act_flags: list[str]         # ["sentinel","aggressive"]
+    aff_flags: list[str]         # ["invisible","sanctuary"]
+    stats: dict[str, Any]        # {"str":18,"dex":15,...}
+    skills: dict[str, Any]       # {"backstab":80}
+    scripts: list[int]
+    ext: dict[str, Any]
 
 
 @dataclass(slots=True)
@@ -88,11 +117,10 @@ class Zone:
     name: str
     builders: str
     lifespan: int
-    bot: int
-    top: int
     reset_mode: int
-    zone_flags: list[int]
-    reset_commands: list[dict[str, Any]]
+    flags: list[str]
+    resets: list[dict[str, Any]]
+    ext: dict[str, Any]
     age: int = 0  # ticks since last reset
 
 
@@ -100,41 +128,52 @@ class Zone:
 class Shop:
     vnum: int
     keeper_vnum: int
-    selling_items: list[int]
-    profit_buy: float
-    profit_sell: float
-    shop_room: int
-    open1: int
-    close1: int
-    open2: int
-    close2: int
+    room_vnum: int
+    buy_types: list[str]
+    buy_profit: float
+    sell_profit: float
+    hours: dict[str, int]
+    inventory: list[dict[str, Any]]
+    messages: dict[str, str]
+    ext: dict[str, Any]
 
 
 @dataclass(slots=True)
 class GameClass:
     id: int
     name: str
-    abbreviation: str
-    hp_gain_min: int
-    hp_gain_max: int
-    extensions: dict[str, Any]
+    abbrev: str
+    hp_gain: tuple[int, int]     # (min, max)
+    mana_gain: tuple[int, int]
+    move_gain: tuple[int, int]
+    base_stats: dict[str, Any]
+    ext: dict[str, Any]
 
 
 @dataclass(slots=True)
-class Skill:
+class SkillProto:
     id: int
     name: str
-    spell_type: str
-    max_mana: int
-    min_mana: int
-    mana_change: int
-    min_position: int
-    targets: int
+    skill_type: str              # "spell","skill","martial"
+    mana_cost: int
+    target: str                  # "char_room","self_only",...
     violent: bool
-    routines: int
+    min_position: int
+    routines: list[str]          # ["damage","affects"]
     wearoff_msg: str
     class_levels: dict[str, int]
-    extensions: dict[str, Any]
+    ext: dict[str, Any]
+
+
+@dataclass(slots=True)
+class RaceProto:
+    id: int
+    name: str
+    abbrev: str
+    stat_mods: dict[str, int]
+    body_parts: list[str]
+    size: str
+    ext: dict[str, Any]
 
 
 # ── Runtime instances (mutable state) ────────────────────────────
@@ -162,27 +201,27 @@ class MobInstance:
     gold: int = 0
     experience: int = 0
     class_id: int = 0
+    race_id: int = 0
     player_level: int = 1
     position: int = 8  # POS_STANDING
     fighting: MobInstance | None = None
     inventory: list[ObjInstance] = field(default_factory=list)
-    equipment: dict[int, ObjInstance] = field(default_factory=dict)
+    equipment: dict[str, ObjInstance] = field(default_factory=dict)  # slot_name → obj
     affects: list[dict[str, Any]] = field(default_factory=list)
-    skills: dict[int, int] = field(default_factory=dict)  # skill_id → proficiency
-    extensions: dict[str, Any] = field(default_factory=dict)  # game-specific data
-    # Stats (str/int/wis/dex/con/cha)
-    str: int = 13
-    intel: int = 13
-    wis: int = 13
-    dex: int = 13
-    con: int = 13
-    cha: int = 13
-    hitroll: int = 0
-    damroll: int = 0
+    skills: dict[str, int] = field(default_factory=dict)  # skill_name → proficiency
+    stats: dict[str, int] = field(default_factory=dict)    # dynamic stats
+    flags: list[str] = field(default_factory=list)
+    extensions: dict[str, Any] = field(default_factory=dict)
     # For players
     player_id: int | None = None
     player_name: str = ""
     session: Any = None  # back-reference to Session
+    # Computed combat stats
+    hitroll: int = 0
+    damroll: int = 0
+    armor_class: int = 100
+    alignment: int = 0
+    sex: int = 0
 
     @property
     def is_npc(self) -> bool:
@@ -192,7 +231,7 @@ class MobInstance:
     def name(self) -> str:
         if self.player_name:
             return self.player_name
-        return self.proto.short_description if self.proto else "someone"
+        return self.proto.short_desc if self.proto else "someone"
 
     @property
     def level(self) -> int:
@@ -212,14 +251,14 @@ class ObjInstance:
     room_vnum: int | None = None
     carried_by: MobInstance | None = None
     worn_by: MobInstance | None = None
-    wear_pos: int = -1
+    wear_slot: str = ""           # slot name ("wield","body",...)
     in_obj: ObjInstance | None = None
     contains: list[ObjInstance] = field(default_factory=list)
-    values: list[int] = field(default_factory=list)
+    values: dict[str, Any] = field(default_factory=dict)  # mutable copy
 
     @property
     def name(self) -> str:
-        return self.proto.short_description if self.proto else "something"
+        return self.proto.short_desc if self.proto else "something"
 
 
 # ── Room (live state) ────────────────────────────────────────────
@@ -229,7 +268,6 @@ class Room:
     proto: RoomProto
     characters: list[MobInstance] = field(default_factory=list)
     objects: list[ObjInstance] = field(default_factory=list)
-    # Mutable door states: direction → {"closed": bool, "locked": bool}
     door_states: dict[int, dict[str, bool]] = field(default_factory=dict)
 
     @property
@@ -243,10 +281,10 @@ class Room:
     def init_doors(self) -> None:
         """Initialize mutable door states from proto exits."""
         for ex in self.proto.exits:
-            if ex.door_flags & 1:  # has door
+            if ex.has_door:
                 self.door_states[ex.direction] = {
-                    "closed": bool(ex.door_flags & 2),
-                    "locked": bool(ex.door_flags & 4),
+                    "closed": "closed" in ex.flags,
+                    "locked": "locked" in ex.flags,
                 }
 
     def is_door_closed(self, direction: int) -> bool:
@@ -273,205 +311,288 @@ class World:
         self.zones: list[Zone] = []
         self.shops: dict[int, Shop] = {}
         self.classes: dict[int, GameClass] = {}
-        self.skills: dict[int, Skill] = {}
+        self.skills: dict[int, SkillProto] = {}
+        self.races: dict[int, RaceProto] = {}
         self.socials: dict[str, dict[str, Any]] = {}
         self.help_entries: list[dict[str, Any]] = []
-        self.commands: dict[str, dict[str, Any]] = {}
         self.game_configs: dict[str, Any] = {}
-        self.exp_table: dict[tuple[int, int], int] = {}   # (class_id, level) → exp
-        self.thac0_table: dict[tuple[int, int], int] = {}  # (class_id, level) → thac0
-        self.saving_throws: dict[tuple[int, int, int], int] = {}  # (class,save,lv) → val
-        self.triggers_lua: str = ""  # raw Lua source for lupa
+        self.game_tables: dict[str, dict[str, Any]] = {}  # table_name → {key_json → value}
 
     async def load_from_db(self, db: Database, data_dir: Any = None) -> None:
-        """Load all 21 tables into memory."""
+        """Load all proto tables into memory."""
         log.info("Loading world from database...")
 
-        # Rooms
-        rows = await db.fetch_all("rooms")
-        for r in rows:
-            exits_data = json.loads(r["exits"]) if isinstance(r["exits"], str) else r["exits"]
-            exits = []
-            for e in exits_data:
-                exits.append(Exit(
-                    direction=e.get("direction", e.get("dir", 0)),
-                    to_room=e.get("to_room", e.get("dest", -1)),
-                    keywords=e.get("keywords", e.get("keyword", "")),
-                    description=e.get("description", e.get("desc", "")),
-                    door_flags=e.get("door_flags", 0),
-                    key_vnum=e.get("key_vnum", -1),
-                ))
-            extra_descs_data = (
-                json.loads(r["extra_descs"]) if isinstance(r["extra_descs"], str)
-                else r["extra_descs"]
-            )
-            extra_descs = [ExtraDesc(e["keywords"], e["description"]) for e in extra_descs_data]
-            flags = json.loads(r["room_flags"]) if isinstance(r["room_flags"], str) else r["room_flags"]
-            tvnums = json.loads(r["trigger_vnums"]) if isinstance(r["trigger_vnums"], str) else r["trigger_vnums"]
-            proto = RoomProto(
-                vnum=r["vnum"], name=r["name"], description=r["description"],
-                zone_number=r["zone_number"], sector_type=r["sector_type"],
-                room_flags=flags, exits=exits, extra_descs=extra_descs,
-                trigger_vnums=tvnums,
-            )
-            self.rooms[r["vnum"]] = Room(proto=proto)
-        # Initialize mutable door states
-        for room in self.rooms.values():
-            room.init_doors()
-        log.info("  Rooms: %d", len(self.rooms))
-
-        # Items
-        rows = await db.fetch_all("items")
-        for r in rows:
-            extra_descs_data = (
-                json.loads(r["extra_descs"]) if isinstance(r["extra_descs"], str)
-                else r["extra_descs"]
-            )
-            extra_descs = [ExtraDesc(e["keywords"], e["description"]) for e in extra_descs_data]
-            self.item_protos[r["vnum"]] = ItemProto(
-                vnum=r["vnum"], keywords=r["keywords"],
-                short_description=r["short_description"],
-                long_description=r["long_description"],
-                item_type=r["item_type"],
-                extra_flags=_jload(r["extra_flags"]),
-                wear_flags=_jload(r["wear_flags"]),
-                values=_jload(r["values"]),
-                weight=r["weight"], cost=r["cost"], rent=r["rent"],
-                affects=_jload(r["affects"]),
-                extra_descs=extra_descs,
-                trigger_vnums=_jload(r["trigger_vnums"]),
-            )
-        log.info("  Items: %d", len(self.item_protos))
-
-        # Monsters
-        rows = await db.fetch_all("monsters")
-        for r in rows:
-            self.mob_protos[r["vnum"]] = MobProto(
-                vnum=r["vnum"], keywords=r["keywords"],
-                short_description=r["short_description"],
-                long_description=r["long_description"],
-                detailed_description=r["detailed_description"],
-                level=r["level"], hitroll=r["hitroll"],
-                armor_class=r["armor_class"],
-                hp_dice=r["hp_dice"], damage_dice=r["damage_dice"],
-                gold=r["gold"], experience=r["experience"],
-                action_flags=_jload(r["action_flags"]),
-                affect_flags=_jload(r["affect_flags"]),
-                alignment=r["alignment"], sex=r["sex"],
-                trigger_vnums=_jload(r["trigger_vnums"]),
-            )
-        log.info("  Monsters: %d", len(self.mob_protos))
-
-        # Zones
-        rows = await db.fetch_all("zones")
-        for r in rows:
-            self.zones.append(Zone(
-                vnum=r["vnum"], name=r["name"], builders=r["builders"],
-                lifespan=r["lifespan"], bot=r["bot"], top=r["top"],
-                reset_mode=r["reset_mode"],
-                zone_flags=_jload(r["zone_flags"]),
-                reset_commands=_jload(r["reset_commands"]),
-            ))
-        self.zones.sort(key=lambda z: z.vnum)
-        log.info("  Zones: %d", len(self.zones))
-
-        # Shops
-        rows = await db.fetch_all("shops")
-        for r in rows:
-            self.shops[r["keeper_vnum"]] = Shop(
-                vnum=r["vnum"], keeper_vnum=r["keeper_vnum"],
-                selling_items=_jload(r["selling_items"]),
-                profit_buy=r["profit_buy"], profit_sell=r["profit_sell"],
-                shop_room=r["shop_room"],
-                open1=r["open1"], close1=r["close1"],
-                open2=r["open2"], close2=r["close2"],
-            )
-        log.info("  Shops: %d", len(self.shops))
-
-        # Classes
-        rows = await db.fetch_all("classes")
-        for r in rows:
-            self.classes[r["id"]] = GameClass(
-                id=r["id"], name=r["name"], abbreviation=r["abbreviation"],
-                hp_gain_min=r["hp_gain_min"], hp_gain_max=r["hp_gain_max"],
-                extensions=_jload(r["extensions"]),
-            )
-        log.info("  Classes: %d", len(self.classes))
-
-        # Skills
-        rows = await db.fetch_all("skills")
-        for r in rows:
-            self.skills[r["id"]] = Skill(
-                id=r["id"], name=r["name"], spell_type=r["spell_type"],
-                max_mana=r["max_mana"], min_mana=r["min_mana"],
-                mana_change=r["mana_change"], min_position=r["min_position"],
-                targets=r["targets"], violent=r["violent"],
-                routines=r["routines"], wearoff_msg=r["wearoff_msg"],
-                class_levels=_jload(r["class_levels"]),
-                extensions=_jload(r["extensions"]),
-            )
-        log.info("  Skills: %d", len(self.skills))
-
-        # Socials
-        rows = await db.fetch_all("socials")
-        for r in rows:
-            self.socials[r["command"]] = dict(r)
-        log.info("  Socials: %d", len(self.socials))
-
-        # Help entries
-        rows = await db.fetch_all("help_entries")
-        for r in rows:
-            self.help_entries.append({
-                "keywords": _jload(r["keywords"]),
-                "min_level": r["min_level"],
-                "text": r["text"],
-            })
-        log.info("  Help entries: %d", len(self.help_entries))
-
-        # Commands
-        rows = await db.fetch_all("commands")
-        for r in rows:
-            self.commands[r["name"]] = dict(r)
-        log.info("  Commands: %d", len(self.commands))
-
-        # Game configs
-        rows = await db.fetch_all("game_configs")
-        for r in rows:
-            self.game_configs[r["key"]] = r["value"]
-        log.info("  Game configs: %d", len(self.game_configs))
-
-        # Experience table
-        rows = await db.fetch_all("experience_table")
-        for r in rows:
-            self.exp_table[(r["class_id"], r["level"])] = r["exp_required"]
-        log.info("  Exp table entries: %d", len(self.exp_table))
-
-        # THAC0 table
-        rows = await db.fetch_all("thac0_table")
-        for r in rows:
-            self.thac0_table[(r["class_id"], r["level"])] = r["thac0"]
-        log.info("  THAC0 table entries: %d", len(self.thac0_table))
-
-        # Saving throws
-        rows = await db.fetch_all("saving_throws")
-        for r in rows:
-            self.saving_throws[(r["class_id"], r["save_type"], r["level"])] = r["save_value"]
-        log.info("  Saving throws: %d", len(self.saving_throws))
+        await self._load_rooms(db)
+        await self._load_room_exits(db)
+        await self._load_items(db)
+        await self._load_mobs(db)
+        await self._load_zones(db)
+        await self._load_shops(db)
+        await self._load_classes(db)
+        await self._load_skills(db)
+        await self._load_races(db)
+        await self._load_socials(db)
+        await self._load_help(db)
+        await self._load_game_configs(db)
+        await self._load_game_tables(db)
 
         log.info("World loaded: %d rooms, %d items, %d mobs",
                  len(self.rooms), len(self.item_protos), len(self.mob_protos))
 
+    # ── Loaders ─────────────────────────────────────────────
+
+    async def _load_rooms(self, db: Database) -> None:
+        rows = await db.fetch_all("rooms")
+        for r in rows:
+            extra_descs_data = _jload(r["extra_descs"])
+            extra_descs = [ExtraDesc(e["keywords"], e["description"]) for e in extra_descs_data]
+            flags = _ensure_list(r.get("flags", []))
+            scripts = _jload(r.get("scripts", "[]"))
+            ext = _jload(r.get("ext", "{}"))
+            proto = RoomProto(
+                vnum=r["vnum"], name=r["name"], description=r["description"],
+                zone_vnum=r.get("zone_vnum", 0), sector=r.get("sector", 0),
+                flags=flags, exits=[], extra_descs=extra_descs,
+                scripts=scripts, ext=ext,
+            )
+            self.rooms[r["vnum"]] = Room(proto=proto)
+        log.info("  Rooms: %d", len(self.rooms))
+
+    async def _load_room_exits(self, db: Database) -> None:
+        rows = await db.fetch_all("room_exits")
+        for r in rows:
+            room = self.rooms.get(r["from_vnum"])
+            if room is None:
+                continue
+            flags = _ensure_list(r.get("flags", []))
+            ex = Exit(
+                direction=r["direction"],
+                to_vnum=r["to_vnum"],
+                keywords=r.get("keywords", ""),
+                description=r.get("description", ""),
+                key_vnum=r.get("key_vnum", -1),
+                flags=tuple(flags),
+            )
+            room.proto.exits.append(ex)
+        # Initialize door states
+        for room in self.rooms.values():
+            room.init_doors()
+        total_exits = sum(len(rm.proto.exits) for rm in self.rooms.values())
+        log.info("  Exits: %d", total_exits)
+
+    async def _load_items(self, db: Database) -> None:
+        rows = await db.fetch_all("item_protos")
+        for r in rows:
+            extra_descs_data = _jload(r.get("extra_descs", "[]"))
+            extra_descs = [ExtraDesc(e["keywords"], e["description"]) for e in extra_descs_data]
+            self.item_protos[r["vnum"]] = ItemProto(
+                vnum=r["vnum"], keywords=r.get("keywords", ""),
+                short_desc=r.get("short_desc", ""),
+                long_desc=r.get("long_desc", ""),
+                item_type=r.get("item_type", "other"),
+                weight=r.get("weight", 0), cost=r.get("cost", 0),
+                min_level=r.get("min_level", 0),
+                wear_slots=_ensure_list(r.get("wear_slots", [])),
+                flags=_ensure_list(r.get("flags", [])),
+                values=_jload(r.get("values", "{}")),
+                affects=_jload(r.get("affects", "[]")),
+                extra_descs=extra_descs,
+                scripts=_jload(r.get("scripts", "[]")),
+                ext=_jload(r.get("ext", "{}")),
+            )
+        log.info("  Items: %d", len(self.item_protos))
+
+    async def _load_mobs(self, db: Database) -> None:
+        rows = await db.fetch_all("mob_protos")
+        for r in rows:
+            self.mob_protos[r["vnum"]] = MobProto(
+                vnum=r["vnum"], keywords=r.get("keywords", ""),
+                short_desc=r.get("short_desc", ""),
+                long_desc=r.get("long_desc", ""),
+                detail_desc=r.get("detail_desc", ""),
+                level=r.get("level", 1),
+                max_hp=r.get("max_hp", 1),
+                max_mana=r.get("max_mana", 0),
+                max_move=r.get("max_move", 0),
+                armor_class=r.get("armor_class", 100),
+                hitroll=r.get("hitroll", 0),
+                damroll=r.get("damroll", 0),
+                damage_dice=r.get("damage_dice", "1d4+0"),
+                gold=r.get("gold", 0),
+                experience=r.get("experience", 0),
+                alignment=r.get("alignment", 0),
+                sex=r.get("sex", 0),
+                position=r.get("position", 8),
+                class_id=r.get("class_id", 0),
+                race_id=r.get("race_id", 0),
+                act_flags=_ensure_list(r.get("act_flags", [])),
+                aff_flags=_ensure_list(r.get("aff_flags", [])),
+                stats=_jload(r.get("stats", "{}")),
+                skills=_jload(r.get("skills", "{}")),
+                scripts=_jload(r.get("scripts", "[]")),
+                ext=_jload(r.get("ext", "{}")),
+            )
+        log.info("  Mobs: %d", len(self.mob_protos))
+
+    async def _load_zones(self, db: Database) -> None:
+        rows = await db.fetch_all("zones")
+        for r in rows:
+            self.zones.append(Zone(
+                vnum=r["vnum"], name=r["name"],
+                builders=r.get("builders", ""),
+                lifespan=r.get("lifespan", 30),
+                reset_mode=r.get("reset_mode", 2),
+                flags=_ensure_list(r.get("flags", [])),
+                resets=_jload(r.get("resets", "[]")),
+                ext=_jload(r.get("ext", "{}")),
+            ))
+        self.zones.sort(key=lambda z: z.vnum)
+        log.info("  Zones: %d", len(self.zones))
+
+    async def _load_shops(self, db: Database) -> None:
+        rows = await db.fetch_all("shops")
+        for r in rows:
+            shop = Shop(
+                vnum=r["vnum"], keeper_vnum=r["keeper_vnum"],
+                room_vnum=r.get("room_vnum", 0),
+                buy_types=_ensure_list(r.get("buy_types", [])),
+                buy_profit=r.get("buy_profit", 1.1),
+                sell_profit=r.get("sell_profit", 0.9),
+                hours=_jload(r.get("hours", "{}")),
+                inventory=_jload(r.get("inventory", "[]")),
+                messages=_jload(r.get("messages", "{}")),
+                ext=_jload(r.get("ext", "{}")),
+            )
+            self.shops[shop.keeper_vnum] = shop
+        log.info("  Shops: %d", len(self.shops))
+
+    async def _load_classes(self, db: Database) -> None:
+        rows = await db.fetch_all("classes")
+        for r in rows:
+            # INT4RANGE comes as asyncpg Range object or string "[min,max)"
+            hp = _parse_range(r.get("hp_gain"), (1, 10))
+            mana = _parse_range(r.get("mana_gain"), (0, 0))
+            move = _parse_range(r.get("move_gain"), (0, 0))
+            self.classes[r["id"]] = GameClass(
+                id=r["id"], name=r["name"],
+                abbrev=r.get("abbrev", ""),
+                hp_gain=hp, mana_gain=mana, move_gain=move,
+                base_stats=_jload(r.get("base_stats", "{}")),
+                ext=_jload(r.get("ext", "{}")),
+            )
+        log.info("  Classes: %d", len(self.classes))
+
+    async def _load_skills(self, db: Database) -> None:
+        rows = await db.fetch_all("skills")
+        for r in rows:
+            self.skills[r["id"]] = SkillProto(
+                id=r["id"], name=r["name"],
+                skill_type=r.get("skill_type", "spell"),
+                mana_cost=r.get("mana_cost", 0),
+                target=r.get("target", "ignore"),
+                violent=r.get("violent", False),
+                min_position=r.get("min_position", 0),
+                routines=_ensure_list(r.get("routines", [])),
+                wearoff_msg=r.get("wearoff_msg", ""),
+                class_levels=_jload(r.get("class_levels", "{}")),
+                ext=_jload(r.get("ext", "{}")),
+            )
+        log.info("  Skills: %d", len(self.skills))
+
+    async def _load_races(self, db: Database) -> None:
+        rows = await db.fetch_all("races")
+        for r in rows:
+            self.races[r["id"]] = RaceProto(
+                id=r["id"], name=r["name"],
+                abbrev=r.get("abbrev", ""),
+                stat_mods=_jload(r.get("stat_mods", "{}")),
+                body_parts=_ensure_list(r.get("body_parts", [])),
+                size=r.get("size", "medium"),
+                ext=_jload(r.get("ext", "{}")),
+            )
+        log.info("  Races: %d", len(self.races))
+
+    async def _load_socials(self, db: Database) -> None:
+        rows = await db.fetch_all("socials")
+        for r in rows:
+            self.socials[r["command"]] = {
+                "command": r["command"],
+                "min_victim_position": r.get("min_victim_position", 0),
+                "messages": _jload(r.get("messages", "{}")),
+            }
+        log.info("  Socials: %d", len(self.socials))
+
+    async def _load_help(self, db: Database) -> None:
+        rows = await db.fetch_all("help_entries")
+        for r in rows:
+            self.help_entries.append({
+                "keywords": _ensure_list(r.get("keywords", [])),
+                "category": r.get("category", "general"),
+                "min_level": r.get("min_level", 0),
+                "body": r.get("body", ""),
+            })
+        log.info("  Help entries: %d", len(self.help_entries))
+
+    async def _load_game_configs(self, db: Database) -> None:
+        rows = await db.fetch_all("game_configs")
+        for r in rows:
+            val = _jload(r["value"])
+            self.game_configs[r["key"]] = val
+        log.info("  Game configs: %d", len(self.game_configs))
+
+    async def _load_game_tables(self, db: Database) -> None:
+        rows = await db.fetch_all("game_tables")
+        for r in rows:
+            table = r["table_name"]
+            key = json.dumps(_jload(r["key"]), sort_keys=True)
+            value = _jload(r["value"])
+            if table not in self.game_tables:
+                self.game_tables[table] = {}
+            self.game_tables[table][key] = value
+        total = sum(len(v) for v in self.game_tables.values())
+        log.info("  Game tables: %d entries across %d tables",
+                 total, len(self.game_tables))
+
+    # ── Convenience lookups ─────────────────────────────────
+
+    def get_exp_required(self, class_id: int, level: int) -> int:
+        """Look up experience required for a level."""
+        tbl = self.game_tables.get("exp_table", {})
+        key = json.dumps({"class_id": class_id, "level": level}, sort_keys=True)
+        return tbl.get(key, 0)
+
+    def get_thac0(self, class_id: int, level: int) -> int:
+        tbl = self.game_tables.get("thac0", {})
+        key = json.dumps({"class_id": class_id, "level": level}, sort_keys=True)
+        return tbl.get(key, 20)
+
+    def get_saving_throw(self, class_id: int, save_type: int, level: int) -> int:
+        tbl = self.game_tables.get("saving_throw", {})
+        key = json.dumps({"class_id": class_id, "level": level, "type": save_type}, sort_keys=True)
+        return tbl.get(key, 0)
+
+    # ── Room access ─────────────────────────────────────────
+
     def get_room(self, vnum: int) -> Room | None:
         return self.rooms.get(vnum)
+
+    # ── Instance creation ───────────────────────────────────
 
     def create_mob(self, vnum: int, room_vnum: int) -> MobInstance | None:
         proto = self.mob_protos.get(vnum)
         if proto is None:
             return None
-        hp = _roll_dice(proto.hp_dice)
         mob = MobInstance(
             id=_next_id(), proto=proto, room_vnum=room_vnum,
-            hp=hp, max_hp=hp, gold=proto.gold,
+            hp=proto.max_hp, max_hp=proto.max_hp,
+            mana=proto.max_mana, max_mana=proto.max_mana,
+            move=proto.max_move, max_move=proto.max_move,
+            gold=proto.gold, experience=proto.experience,
+            class_id=proto.class_id, race_id=proto.race_id,
+            hitroll=proto.hitroll, damroll=proto.damroll,
+            armor_class=proto.armor_class,
+            alignment=proto.alignment, sex=proto.sex,
+            stats=dict(proto.stats),
         )
         room = self.rooms.get(room_vnum)
         if room:
@@ -483,7 +604,7 @@ class World:
         if proto is None:
             return None
         return ObjInstance(
-            id=_next_id(), proto=proto, values=list(proto.values),
+            id=_next_id(), proto=proto, values=dict(proto.values),
         )
 
     def obj_to_room(self, obj: ObjInstance, room_vnum: int) -> None:
@@ -493,7 +614,6 @@ class World:
             room.objects.append(obj)
 
     def char_to_room(self, mob: MobInstance, room_vnum: int) -> None:
-        # Remove from old room
         old_room = self.rooms.get(mob.room_vnum)
         if old_room and mob in old_room.characters:
             old_room.characters.remove(mob)
@@ -508,6 +628,8 @@ class World:
             room.characters.remove(mob)
 
 
+# ── Utility functions ────────────────────────────────────────────
+
 def _jload(val: Any) -> Any:
     """Load JSON if string, otherwise return as-is."""
     if isinstance(val, str):
@@ -515,9 +637,39 @@ def _jload(val: Any) -> Any:
     return val
 
 
+def _ensure_list(val: Any) -> list:
+    """Ensure val is a list (TEXT[] from asyncpg comes as list already)."""
+    if val is None:
+        return []
+    if isinstance(val, str):
+        return json.loads(val)
+    if isinstance(val, (list, tuple)):
+        return list(val)
+    return []
+
+
+def _parse_range(val: Any, default: tuple[int, int]) -> tuple[int, int]:
+    """Parse INT4RANGE (asyncpg Range or string) to (min, max) tuple."""
+    if val is None:
+        return default
+    # String format "[1,10)"
+    if isinstance(val, str) and val.startswith("["):
+        inner = val.strip("[)")
+        parts = inner.split(",")
+        if len(parts) == 2:
+            return (int(parts[0]), int(parts[1]) - 1)
+    # asyncpg Range object (has .lower/.upper as int|None, not methods)
+    lo = getattr(val, "lower", None)
+    hi = getattr(val, "upper", None)
+    if isinstance(lo, int) or isinstance(hi, int):
+        lo_val = lo if isinstance(lo, int) else default[0]
+        hi_val = (hi - 1) if isinstance(hi, int) else default[1]
+        return (lo_val, hi_val)
+    return default
+
+
 def _roll_dice(dice_str: str) -> int:
     """Roll NdS+B dice. E.g. '3d8+100' → random value."""
-    import random
     if "d" not in dice_str:
         return int(dice_str)
     left, rest = dice_str.split("d", 1)

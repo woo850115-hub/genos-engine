@@ -43,6 +43,22 @@ def _make_door_world():
     return w
 
 
+def _load_common_lua(eng):
+    """Load common Lua commands into engine for testing."""
+    from core.lua_commands import LuaCommandRuntime
+    from pathlib import Path
+    eng.lua = LuaCommandRuntime(eng)
+    lua_dir = Path(__file__).resolve().parent.parent / "games" / "common" / "lua"
+    lib = lua_dir / "lib.lua"
+    if lib.exists():
+        eng.lua.load_source(lib.read_text(encoding="utf-8"), "lib")
+    cmd_dir = lua_dir / "commands"
+    if cmd_dir.exists():
+        for f in sorted(cmd_dir.glob("*.lua")):
+            eng.lua.load_source(f.read_text(encoding="utf-8"), f"cmd/{f.stem}")
+    eng.lua.register_all_commands()
+
+
 def _make_session(eng, room_vnum=1):
     session = MagicMock()
     session.send_line = AsyncMock()
@@ -76,6 +92,7 @@ def _make_engine(world):
     eng.cmd_handlers = {}
     eng.cmd_korean = {}
     eng._register_core_commands()
+    _load_common_lua(eng)
     eng.game_name = "tbamud"
     return eng
 
@@ -134,7 +151,7 @@ class TestOpenCommand:
         eng = _make_engine(w)
         session = _make_session(eng)
 
-        await eng.do_open(session, "북")
+        await eng.cmd_handlers["open"](session, "북")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("잠겨" in c for c in calls)
 
@@ -145,7 +162,7 @@ class TestOpenCommand:
         w.rooms[1].door_states[0]["locked"] = False
         session = _make_session(eng)
 
-        await eng.do_open(session, "북")
+        await eng.cmd_handlers["open"](session, "북")
         assert not w.rooms[1].is_door_closed(0)
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("열었습니다" in c for c in calls)
@@ -158,7 +175,7 @@ class TestOpenCommand:
         w.rooms[1].door_states[0]["locked"] = False
         session = _make_session(eng)
 
-        await eng.do_open(session, "북")
+        await eng.cmd_handlers["open"](session, "북")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("이미 열려" in c for c in calls)
 
@@ -172,7 +189,7 @@ class TestCloseCommand:
         w.rooms[1].door_states[0]["locked"] = False
         session = _make_session(eng)
 
-        await eng.do_close(session, "북")
+        await eng.cmd_handlers["close"](session, "북")
         assert w.rooms[1].is_door_closed(0)
 
     @pytest.mark.asyncio
@@ -181,7 +198,7 @@ class TestCloseCommand:
         eng = _make_engine(w)
         session = _make_session(eng)
 
-        await eng.do_close(session, "북")
+        await eng.cmd_handlers["close"](session, "북")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("이미 닫혀" in c for c in calls)
 
@@ -198,7 +215,7 @@ class TestLockUnlock:
         key_obj = ObjInstance(id=99, proto=w.item_protos[100])
         char.inventory.append(key_obj)
 
-        await eng.do_unlock(session, "북")
+        await eng.cmd_handlers["unlock"](session, "북")
         assert not w.rooms[1].is_door_locked(0)
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("자물쇠" in c for c in calls)
@@ -209,7 +226,7 @@ class TestLockUnlock:
         eng = _make_engine(w)
         session = _make_session(eng)
 
-        await eng.do_unlock(session, "북")
+        await eng.cmd_handlers["unlock"](session, "북")
         assert w.rooms[1].is_door_locked(0)  # still locked
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("열쇠" in c for c in calls)
@@ -225,7 +242,7 @@ class TestLockUnlock:
         key_obj = ObjInstance(id=99, proto=w.item_protos[100])
         char.inventory.append(key_obj)
 
-        await eng.do_lock(session, "북")
+        await eng.cmd_handlers["lock"](session, "북")
         assert w.rooms[1].is_door_locked(0)
 
     @pytest.mark.asyncio
@@ -236,6 +253,6 @@ class TestLockUnlock:
         w.rooms[1].door_states[0]["locked"] = False
         session = _make_session(eng)
 
-        await eng.do_lock(session, "북")
+        await eng.cmd_handlers["lock"](session, "북")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("닫아야" in c for c in calls)

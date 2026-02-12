@@ -1,4 +1,7 @@
-"""Database layer — asyncpg connection pool, auto-init, CRUD."""
+"""Database layer — asyncpg connection pool, auto-init, CRUD.
+
+GenOS Unified Schema v1.0: 20 tables in DDL, players/lua_scripts included.
+"""
 
 from __future__ import annotations
 
@@ -78,54 +81,6 @@ class Database:
             await conn.execute(seed_sql)
             log.info("Seed data loaded")
 
-    async def ensure_players_table(self) -> None:
-        """Create players table if not exists (not in migration output)."""
-        async with self.pool.acquire() as conn:
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS players (
-                    id              SERIAL PRIMARY KEY,
-                    name            TEXT UNIQUE NOT NULL,
-                    password_hash   TEXT NOT NULL,
-                    class_id        INTEGER NOT NULL DEFAULT 0,
-                    race_id         INTEGER NOT NULL DEFAULT 0,
-                    sex             INTEGER NOT NULL DEFAULT 0,
-                    level           INTEGER NOT NULL DEFAULT 1,
-                    hp              INTEGER NOT NULL DEFAULT 20,
-                    max_hp          INTEGER NOT NULL DEFAULT 20,
-                    mana            INTEGER NOT NULL DEFAULT 100,
-                    max_mana        INTEGER NOT NULL DEFAULT 100,
-                    move_points     INTEGER NOT NULL DEFAULT 82,
-                    max_move        INTEGER NOT NULL DEFAULT 82,
-                    room_vnum       INTEGER NOT NULL DEFAULT 3001,
-                    gold            INTEGER NOT NULL DEFAULT 0,
-                    experience      BIGINT NOT NULL DEFAULT 0,
-                    strength        INTEGER NOT NULL DEFAULT 13,
-                    dexterity       INTEGER NOT NULL DEFAULT 13,
-                    constitution    INTEGER NOT NULL DEFAULT 13,
-                    intelligence    INTEGER NOT NULL DEFAULT 13,
-                    wisdom          INTEGER NOT NULL DEFAULT 13,
-                    charisma        INTEGER NOT NULL DEFAULT 13,
-                    hitroll         INTEGER NOT NULL DEFAULT 0,
-                    damroll         INTEGER NOT NULL DEFAULT 0,
-                    armor_class     INTEGER NOT NULL DEFAULT 100,
-                    alignment       INTEGER NOT NULL DEFAULT 0,
-                    practices       INTEGER NOT NULL DEFAULT 0,
-                    equipment       JSONB NOT NULL DEFAULT '{}',
-                    inventory       JSONB NOT NULL DEFAULT '[]',
-                    affects         JSONB NOT NULL DEFAULT '[]',
-                    skills          JSONB NOT NULL DEFAULT '{}',
-                    quest_progress  JSONB NOT NULL DEFAULT '{}',
-                    aliases         JSONB NOT NULL DEFAULT '{}',
-                    title           TEXT NOT NULL DEFAULT '',
-                    description     TEXT NOT NULL DEFAULT '',
-                    flags           JSONB NOT NULL DEFAULT '[]',
-                    extensions      JSONB NOT NULL DEFAULT '{}',
-                    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    last_login      TIMESTAMPTZ
-                )
-            """)
-            log.info("Players table ensured")
-
     # ── Query helpers ───────────────────────────────────────────────
 
     async def fetch_all(self, table: str) -> list[asyncpg.Record]:
@@ -137,6 +92,8 @@ class Database:
             return await conn.fetchrow(
                 f"SELECT * FROM {table} WHERE {key_col} = $1", key_val  # noqa: S608
             )
+
+    # ── Player CRUD ────────────────────────────────────────────────
 
     async def fetch_player(self, name: str) -> asyncpg.Record | None:
         async with self.pool.acquire() as conn:
@@ -172,3 +129,44 @@ class Database:
     async def execute(self, query: str, *args: Any) -> str:
         async with self.pool.acquire() as conn:
             return await conn.execute(query, *args)
+
+    # ── Lua scripts CRUD ─────────────────────────────────────────────
+
+    async def lua_scripts_count(self) -> int:
+        """Return total number of lua_scripts rows."""
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval("SELECT COUNT(*) FROM lua_scripts") or 0
+
+    async def fetch_lua_scripts(self, game: str) -> list[asyncpg.Record]:
+        """Fetch all Lua scripts for a game, ordered by category/name."""
+        async with self.pool.acquire() as conn:
+            return await conn.fetch(
+                "SELECT * FROM lua_scripts WHERE game = $1 "
+                "ORDER BY category, name",
+                game,
+            )
+
+    async def fetch_lua_script(self, game: str, category: str, name: str
+                               ) -> asyncpg.Record | None:
+        """Fetch a single Lua script by game/category/name."""
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow(
+                "SELECT * FROM lua_scripts "
+                "WHERE game = $1 AND category = $2 AND name = $3",
+                game, category, name,
+            )
+
+    async def upsert_lua_script(self, *, game: str, category: str, name: str,
+                                source: str, updated_by: str = "system"
+                                ) -> asyncpg.Record:
+        """Insert or update a Lua script."""
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow(
+                "INSERT INTO lua_scripts (game, category, name, source) "
+                "VALUES ($1, $2, $3, $4) "
+                "ON CONFLICT (game, category, name) DO UPDATE "
+                "SET source = $4, version = lua_scripts.version + 1, "
+                "    updated_at = NOW() "
+                "RETURNING *",
+                game, category, name, source,
+            )

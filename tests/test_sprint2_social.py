@@ -50,6 +50,22 @@ def _make_world_with_socials():
     return w
 
 
+def _load_common_lua(eng):
+    """Load common Lua commands into engine for testing."""
+    from core.lua_commands import LuaCommandRuntime
+    from pathlib import Path
+    eng.lua = LuaCommandRuntime(eng)
+    lua_dir = Path(__file__).resolve().parent.parent / "games" / "common" / "lua"
+    lib = lua_dir / "lib.lua"
+    if lib.exists():
+        eng.lua.load_source(lib.read_text(encoding="utf-8"), "lib")
+    cmd_dir = lua_dir / "commands"
+    if cmd_dir.exists():
+        for f in sorted(cmd_dir.glob("*.lua")):
+            eng.lua.load_source(f.read_text(encoding="utf-8"), f"cmd/{f.stem}")
+    eng.lua.register_all_commands()
+
+
 def _make_engine_session(world):
     eng = Engine.__new__(Engine)
     eng.world = world
@@ -59,6 +75,7 @@ def _make_engine_session(world):
     eng.cmd_handlers = {}
     eng.cmd_korean = {}
     eng._register_core_commands()
+    _load_common_lua(eng)
     eng._load_korean_mappings()
     eng.game_name = "tbamud"
 
@@ -138,7 +155,7 @@ class TestHelpSearch:
     async def test_exact_match(self):
         w = _make_world_with_socials()
         eng, session = _make_engine_session(w)
-        await eng.do_help(session, "help")
+        await eng.cmd_handlers["help"](session, "help")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("help system" in c for c in calls)
 
@@ -146,7 +163,7 @@ class TestHelpSearch:
     async def test_partial_match_single(self):
         w = _make_world_with_socials()
         eng, session = _make_engine_session(w)
-        await eng.do_help(session, "scor")
+        await eng.cmd_handlers["help"](session, "scor")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("stats" in c for c in calls)
 
@@ -155,7 +172,7 @@ class TestHelpSearch:
         w = _make_world_with_socials()
         eng, session = _make_engine_session(w)
         # "l" matches LOOK and KILL → multiple
-        await eng.do_help(session, "l")
+        await eng.cmd_handlers["help"](session, "l")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("여러 도움말" in c or "Look" in c for c in calls)
 
@@ -163,7 +180,7 @@ class TestHelpSearch:
     async def test_no_match(self):
         w = _make_world_with_socials()
         eng, session = _make_engine_session(w)
-        await eng.do_help(session, "nonexistent")
+        await eng.cmd_handlers["help"](session, "nonexistent")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("없습니다" in c for c in calls)
 
@@ -173,7 +190,7 @@ class TestPositionCommands:
     async def test_rest(self):
         w = _make_world_with_socials()
         eng, session = _make_engine_session(w)
-        await eng.do_rest(session, "")
+        await eng.cmd_handlers["rest"](session, "")
         assert session.character.position == Engine.POS_RESTING
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("쉬기" in c for c in calls)
@@ -182,7 +199,7 @@ class TestPositionCommands:
     async def test_sit(self):
         w = _make_world_with_socials()
         eng, session = _make_engine_session(w)
-        await eng.do_sit(session, "")
+        await eng.cmd_handlers["sit"](session, "")
         assert session.character.position == Engine.POS_SITTING
 
     @pytest.mark.asyncio
@@ -190,14 +207,14 @@ class TestPositionCommands:
         w = _make_world_with_socials()
         eng, session = _make_engine_session(w)
         session.character.position = Engine.POS_RESTING
-        await eng.do_stand(session, "")
+        await eng.cmd_handlers["stand"](session, "")
         assert session.character.position == Engine.POS_STANDING
 
     @pytest.mark.asyncio
     async def test_sleep(self):
         w = _make_world_with_socials()
         eng, session = _make_engine_session(w)
-        await eng.do_sleep(session, "")
+        await eng.cmd_handlers["sleep"](session, "")
         assert session.character.position == Engine.POS_SLEEPING
 
     @pytest.mark.asyncio
@@ -205,7 +222,7 @@ class TestPositionCommands:
         w = _make_world_with_socials()
         eng, session = _make_engine_session(w)
         session.character.fighting = MagicMock()
-        await eng.do_rest(session, "")
+        await eng.cmd_handlers["rest"](session, "")
         assert session.character.position != Engine.POS_RESTING
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("전투 중" in c for c in calls)
@@ -214,7 +231,7 @@ class TestPositionCommands:
     async def test_already_standing(self):
         w = _make_world_with_socials()
         eng, session = _make_engine_session(w)
-        await eng.do_stand(session, "")
+        await eng.cmd_handlers["stand"](session, "")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("이미 서" in c for c in calls)
 
@@ -224,7 +241,7 @@ class TestCombatStubs:
     async def test_kill_no_args(self):
         w = _make_world_with_socials()
         eng, session = _make_engine_session(w)
-        await eng.do_kill(session, "")
+        await eng.cmd_handlers["kill"](session, "")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("누구를" in c for c in calls)
 
@@ -244,7 +261,7 @@ class TestCombatStubs:
         mob = MobInstance(id=50, proto=mob_proto, room_vnum=1, hp=5, max_hp=5)
         w.rooms[1].characters.append(mob)
 
-        await eng.do_kill(session, "goblin")
+        await eng.cmd_handlers["kill"](session, "goblin")
         assert session.character.fighting is mob
         assert mob.fighting is session.character
 
@@ -252,7 +269,7 @@ class TestCombatStubs:
     async def test_flee_not_fighting(self):
         w = _make_world_with_socials()
         eng, session = _make_engine_session(w)
-        await eng.do_flee(session, "")
+        await eng.cmd_handlers["flee"](session, "")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("전투 중이 아닙니다" in c for c in calls)
 
@@ -264,6 +281,6 @@ class TestCombatStubs:
         session.save_character = AsyncMock()
         session.conn = MagicMock()
         session.conn.close = AsyncMock()
-        await eng.do_quit(session, "")
+        await eng.cmd_handlers["quit"](session, "")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("전투 중" in c for c in calls)

@@ -53,13 +53,33 @@ class TestTelnetConnection:
 
     @pytest.mark.asyncio
     async def test_set_echo_off(self, mock_conn):
-        """Disabling echo sends IAC WILL ECHO."""
+        """Disabling echo toggles _echo flag (server-side echo control)."""
         await mock_conn.set_echo(False)
-        mock_conn.writer.write.assert_called_with(bytes([IAC, WILL, 1]))
+        assert mock_conn._echo is False
 
     @pytest.mark.asyncio
     async def test_set_echo_on(self, mock_conn):
-        """Re-enabling echo sends IAC WONT ECHO."""
+        """Re-enabling echo toggles _echo flag back."""
         mock_conn._echo = False
         await mock_conn.set_echo(True)
-        mock_conn.writer.write.assert_called_with(bytes([IAC, 252, 1]))
+        assert mock_conn._echo is True
+
+    def test_erase_last_char_ascii(self, mock_conn):
+        """Erase ASCII char returns \\b \\b."""
+        mock_conn._line_buf = bytearray(b"abc")
+        result = mock_conn._erase_last_char()
+        assert result == b"\b \b"
+        assert mock_conn._line_buf == bytearray(b"ab")
+
+    def test_erase_last_char_korean(self, mock_conn):
+        """Erase Korean char returns 2x \\b \\b (wide char)."""
+        mock_conn._line_buf = bytearray("가".encode("utf-8"))
+        result = mock_conn._erase_last_char()
+        assert result == b"\b \b\b \b"
+        assert mock_conn._line_buf == bytearray()
+
+    def test_erase_last_char_empty(self, mock_conn):
+        """Erase on empty buffer returns empty."""
+        mock_conn._line_buf = bytearray()
+        result = mock_conn._erase_last_char()
+        assert result == b""

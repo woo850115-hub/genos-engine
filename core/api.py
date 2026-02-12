@@ -7,7 +7,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body
 from fastapi.responses import JSONResponse
 
 if TYPE_CHECKING:
@@ -105,6 +105,82 @@ async def api_room(vnum: int) -> JSONResponse:
         "exits": exits,
         "characters": chars,
         "objects": len(room.objects),
+    })
+
+
+# ── Lua script endpoints ──────────────────────────────────────────
+
+
+@app.get("/api/lua/{game}")
+async def api_lua_list(game: str) -> JSONResponse:
+    """List Lua scripts for a game."""
+    engine = get_engine()
+    rows = await engine.db.fetch_lua_scripts(game)
+    scripts = [
+        {
+            "game": r["game"], "category": r["category"], "name": r["name"],
+            "version": r["version"], "updated_at": str(r["updated_at"]),
+        }
+        for r in rows
+    ]
+    return JSONResponse({"scripts": scripts, "count": len(scripts)})
+
+
+@app.get("/api/lua/{game}/{category}/{name}")
+async def api_lua_get(game: str, category: str, name: str) -> JSONResponse:
+    """Get a single Lua script source."""
+    engine = get_engine()
+    row = await engine.db.fetch_lua_script(game, category, name)
+    if not row:
+        raise HTTPException(status_code=404, detail="Script not found")
+    return JSONResponse({
+        "game": row["game"], "category": row["category"], "name": row["name"],
+        "source": row["source"], "version": row["version"],
+        "updated_at": str(row["updated_at"]),
+    })
+
+
+@app.put("/api/lua/{game}/{category}/{name}")
+async def api_lua_put(game: str, category: str, name: str,
+                      source: str = Body(..., media_type="text/plain")) -> JSONResponse:
+    """Save a Lua script and hot-reload it."""
+    engine = get_engine()
+    row = await engine.db.upsert_lua_script(
+        game=game, category=category, name=name,
+        source=source, updated_by="api",
+    )
+    # Hot-reload the script
+    if engine.lua:
+        key = f"{game}/{category}/{name}"
+        try:
+            engine.lua.reload_script(source, key)
+            engine.lua.register_all_commands()
+        except Exception as e:
+            return JSONResponse(
+                {"status": "error", "error": str(e), "version": row["version"]},
+                status_code=400,
+            )
+    return JSONResponse({
+        "status": "ok", "version": row["version"],
+        "commands": engine.lua.command_count if engine.lua else 0,
+    })
+
+
+@app.post("/api/lua/reload")
+async def api_lua_reload() -> JSONResponse:
+    """Full reload of all Lua scripts from DB."""
+    engine = get_engine()
+    if not engine.lua:
+        raise HTTPException(status_code=503, detail="Lua runtime not initialized")
+    # Re-create runtime to clear state
+    from core.lua_commands import LuaCommandRuntime
+    engine.lua = LuaCommandRuntime(engine)
+    loaded = await engine.lua.load_from_db(engine.db, engine.game_name)
+    engine.lua.register_all_commands()
+    return JSONResponse({
+        "status": "ok", "loaded": loaded,
+        "commands": engine.lua.command_count,
+        "hooks": engine.lua.hook_count,
     })
 
 

@@ -6,9 +6,25 @@ from unittest.mock import AsyncMock, MagicMock
 
 from core.engine import Engine
 from core.world import (
-    Exit, MobInstance, MobProto, ObjInstance, ItemProto,
+    Exit, GameClass, MobInstance, MobProto, ObjInstance, ItemProto,
     Room, RoomProto, World,
 )
+
+
+def _load_common_lua(eng):
+    """Load common Lua commands into engine for testing."""
+    from core.lua_commands import LuaCommandRuntime
+    from pathlib import Path
+    eng.lua = LuaCommandRuntime(eng)
+    lua_dir = Path(__file__).resolve().parent.parent / "games" / "common" / "lua"
+    lib = lua_dir / "lib.lua"
+    if lib.exists():
+        eng.lua.load_source(lib.read_text(encoding="utf-8"), "lib")
+    cmd_dir = lua_dir / "commands"
+    if cmd_dir.exists():
+        for f in sorted(cmd_dir.glob("*.lua")):
+            eng.lua.load_source(f.read_text(encoding="utf-8"), f"cmd/{f.stem}")
+    eng.lua.register_all_commands()
 
 
 def _make_world():
@@ -19,6 +35,13 @@ def _make_world():
         exits=[], extra_descs=[], trigger_vnums=[],
     )
     w.rooms[3001] = Room(proto=room)
+    # Add tbaMUD classes for score tests
+    w.classes = {
+        0: GameClass(id=0, name="마법사", abbreviation="마법", hp_gain_min=3, hp_gain_max=8, extensions={}),
+        1: GameClass(id=1, name="성직자", abbreviation="성직", hp_gain_min=5, hp_gain_max=10, extensions={}),
+        2: GameClass(id=2, name="도적", abbreviation="도적", hp_gain_min=6, hp_gain_max=11, extensions={}),
+        3: GameClass(id=3, name="전사", abbreviation="전사", hp_gain_min=10, hp_gain_max=15, extensions={}),
+    }
     return w
 
 
@@ -33,6 +56,7 @@ def _make_engine_session(world=None):
     eng.cmd_handlers = {}
     eng.cmd_korean = {}
     eng._register_core_commands()
+    _load_common_lua(eng)
     eng._load_korean_mappings()
     eng.game_name = "tbamud"
 
@@ -183,7 +207,7 @@ class TestScoreCommand:
     @pytest.mark.asyncio
     async def test_score_shows_info(self):
         eng, session = _make_engine_session()
-        await eng.do_score(session, "")
+        await eng.cmd_handlers["score"](session, "")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("테스터" in c for c in calls)
         assert any("레벨" in c for c in calls)
@@ -192,6 +216,6 @@ class TestScoreCommand:
     async def test_score_shows_class(self):
         eng, session = _make_engine_session()
         session.character.class_id = 3
-        await eng.do_score(session, "")
+        await eng.cmd_handlers["score"](session, "")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("전사" in c for c in calls)

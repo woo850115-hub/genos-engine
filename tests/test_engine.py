@@ -117,6 +117,9 @@ class TestDoLook:
         real_engine.config = {}
         real_engine.sessions = {}
         real_engine.players = {}
+        real_engine.cmd_handlers = {}
+        real_engine.cmd_korean = {}
+        real_engine._register_core_commands()
 
         session = _make_session(real_engine)
 
@@ -128,12 +131,16 @@ class TestDoLook:
 
 
 class TestDoMove:
-    @pytest.mark.asyncio
-    async def test_move_north(self):
+    def _make_engine(self):
         world = _make_engine_with_rooms()
         real_engine = Engine.__new__(Engine)
         real_engine.world = world
+        real_engine.cmd_handlers = {}
+        return real_engine
 
+    @pytest.mark.asyncio
+    async def test_move_north(self):
+        real_engine = self._make_engine()
         session = _make_session(real_engine)
         char = session.character
 
@@ -143,10 +150,7 @@ class TestDoMove:
 
     @pytest.mark.asyncio
     async def test_move_korean(self):
-        world = _make_engine_with_rooms()
-        real_engine = Engine.__new__(Engine)
-        real_engine.world = world
-
+        real_engine = self._make_engine()
         session = _make_session(real_engine)
         char = session.character
 
@@ -155,10 +159,7 @@ class TestDoMove:
 
     @pytest.mark.asyncio
     async def test_move_abbreviation(self):
-        world = _make_engine_with_rooms()
-        real_engine = Engine.__new__(Engine)
-        real_engine.world = world
-
+        real_engine = self._make_engine()
         session = _make_session(real_engine)
         char = session.character
 
@@ -167,10 +168,7 @@ class TestDoMove:
 
     @pytest.mark.asyncio
     async def test_move_no_exit(self):
-        world = _make_engine_with_rooms()
-        real_engine = Engine.__new__(Engine)
-        real_engine.world = world
-
+        real_engine = self._make_engine()
         session = _make_session(real_engine)
         char = session.character
 

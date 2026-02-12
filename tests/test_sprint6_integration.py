@@ -118,6 +118,26 @@ def _make_multi_room_world():
     return w
 
 
+def _load_common_lua(eng):
+    """Load common + game-specific Lua commands/combat into engine for testing."""
+    from core.lua_commands import LuaCommandRuntime
+    eng.lua = LuaCommandRuntime(eng)
+    base = Path(__file__).resolve().parent.parent / "games"
+    # Load common first, then game-specific (order: common → tbamud)
+    for scope in ("common", "tbamud"):
+        lua_dir = base / scope / "lua"
+        lib = lua_dir / "lib.lua"
+        if lib.exists():
+            eng.lua.load_source(lib.read_text(encoding="utf-8"), f"{scope}/lib")
+        for subdir in ("commands", "combat"):
+            sub_path = lua_dir / subdir
+            if sub_path.exists():
+                for f in sorted(sub_path.glob("*.lua")):
+                    eng.lua.load_source(f.read_text(encoding="utf-8"),
+                                        f"{scope}/{subdir}/{f.stem}")
+    eng.lua.register_all_commands()
+
+
 def _make_engine(world=None):
     if world is None:
         world = _make_multi_room_world()
@@ -129,6 +149,7 @@ def _make_engine(world=None):
     eng.cmd_handlers = {}
     eng.cmd_korean = {}
     eng._register_core_commands()
+    _load_common_lua(eng)
     eng.game_name = "tbamud"
 
     # Register game plugin commands
@@ -465,7 +486,7 @@ class TestScoreCommand:
         calls = [str(c) for c in session.send_line.call_args_list]
         joined = " ".join(calls)
         assert "테스터" in joined
-        assert "HP" in joined
+        assert "체력" in joined or "HP" in joined
 
 
 class TestANSIColorize:

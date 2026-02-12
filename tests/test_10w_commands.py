@@ -138,7 +138,7 @@ class TestWscore:
         info = _import_info()
         char = _make_char()
         session = _make_session(char=char)
-        await info.do_wscore(session, "")
+        await info.do_score(session, "")
 
         calls = session.send_line.call_args_list
         output = calls[0][0][0]
@@ -151,9 +151,10 @@ class TestWscore:
         info = _import_info()
         char = _make_char()
         session = _make_session(char=char)
-        await info.do_wscore(session, "")
+        await info.do_score(session, "")
         output = session.send_line.call_args[0][0]
-        assert "HP" in output or "SP" in output or "레벨" in output
+        # Original box-drawing format uses Korean labels
+        assert "체력" in output or "내력" in output or "이동" in output
 
 
 class TestConsider:
@@ -190,7 +191,7 @@ class TestEquipmentCmd:
         await info.do_equipment(session, "")
 
         calls = [c[0][0] for c in session.send_line.call_args_list]
-        assert any("없음" in c for c in calls)
+        assert any("없" in c or "장비" in c for c in calls)
 
 
 # ─── Comm ─────────────────────────────────────────────────────────

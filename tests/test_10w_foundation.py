@@ -62,8 +62,8 @@ class TestPlugin:
         game = _import_10w("game")
         plugin = game.create_plugin()
         banner = plugin.welcome_banner()
-        assert "십웅기" in banner
-        assert "10woongi" in banner
+        # Original getLogo(): "劍下天山" + "호랭이 서버"
+        assert "호랭이" in banner or "십웅기" in banner
 
     def test_register_commands_no_error(self):
         """register_commands should not raise even with a mock engine."""

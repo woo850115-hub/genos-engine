@@ -7,20 +7,18 @@ import importlib
 import logging
 import os
 import signal
-import sys
 import time
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 import yaml
 
-from core.ansi import colorize
 from core.db import Database
-from core.korean import has_batchim, particle, render_message
+from core.lua_commands import LuaCommandRuntime
 from core.net import TelnetConnection, TelnetServer
 from core.reload import ReloadManager
 from core.session import Session
-from core.world import Room, World
+from core.world import World
 
 log = logging.getLogger(__name__)
 
@@ -132,6 +130,7 @@ class Engine:
         self._last_save = 0.0
         self._plugin: Any = None
         self._watcher_task: asyncio.Task | None = None
+        self.lua: LuaCommandRuntime | None = None
 
     # ── Boot sequence ────────────────────────────────────────────
 
@@ -154,17 +153,29 @@ class Engine:
         self._plugin = mod.create_plugin()
         log.info("Game plugin loaded: %s", self._plugin.name)
 
-        # 5. Register commands
+        # 5. Register core commands (Python — directions, base fallbacks)
         self._register_core_commands()
         self._plugin.register_commands(self)
 
-        # 6. Load Korean verb mapping into cmd_korean
+        # 6. Load Lua runtime
+        self.lua = LuaCommandRuntime(self)
+        await self.db.ensure_lua_scripts_table()
+        lua_count = await self.db.lua_scripts_count()
+        if lua_count == 0:
+            seeded = await self.lua.seed_from_files(self.db, self.game_name)
+            log.info("Lua scripts seeded from files: %d", seeded)
+        loaded = await self.lua.load_from_db(self.db, self.game_name)
+        self.lua.register_all_commands()
+        log.info("Lua commands loaded: %d scripts, %d commands, %d hooks",
+                 loaded, self.lua.command_count, self.lua.hook_count)
+
+        # 7. Load Korean verb mapping into cmd_korean
         self._load_korean_mappings()
 
-        # 7. Initial zone resets
+        # 8. Initial zone resets
         self._do_zone_resets(initial=True)
 
-        # 8. Start network
+        # 9. Start network
         net_cfg = self.config.get("network", {})
         self._telnet = TelnetServer(
             host=net_cfg.get("telnet_host", "0.0.0.0"),
@@ -173,7 +184,7 @@ class Engine:
         )
         await self._telnet.start()
 
-        # 9. Start file watcher (dev mode)
+        # 10. Start file watcher (dev mode)
         if self.config.get("dev", {}).get("hot_reload", False):
             from core.watcher import start_watcher
             games_dir = BASE_DIR / "games"
@@ -272,6 +283,12 @@ class Engine:
             await plugin.combat_round(self)
             return
 
+        # Lua combat_round hook (thac0.lua registers this)
+        lua = getattr(self, "lua", None)
+        if lua and lua.has_hook("combat_round"):
+            await self._lua_combat_round()
+            return
+
         from games.tbamud.combat.thac0 import perform_attack, extra_attacks
         from games.tbamud.combat.death import handle_death
         from games.tbamud.level import check_level_up, do_level_up
@@ -312,6 +329,29 @@ class Engine:
                     if not char.is_npc and check_level_up(char):
                         send_fn = char.session.send_line if char.session else None
                         await do_level_up(char, send_fn=send_fn)
+
+    async def _lua_combat_round(self) -> None:
+        """Run combat round via Lua hook."""
+        from core.lua_commands import HookContext
+
+        processed: set[int] = set()
+        for room in self.world.rooms.values():
+            for char in list(room.characters):
+                if char.id in processed or not char.fighting:
+                    continue
+                if char.position < self.POS_FIGHTING:
+                    char.fighting = None
+                    continue
+                if char.fighting.hp <= 0:
+                    char.fighting = None
+                    continue
+
+                processed.add(char.id)
+                target = char.fighting
+                ctx = HookContext(self, room)
+                self.lua.fire_hook("combat_round", ctx, char, target)
+                await ctx.flush()
+                await ctx.execute_deferred()
 
     async def _send_to_char(self, char, message: str) -> None:
         """Send message to a character if they have a session."""
@@ -496,130 +536,36 @@ class Engine:
     # ── Core commands (always available) ─────────────────────────
 
     def _register_core_commands(self) -> None:
-        self.register_command("look", self.do_look, korean="봐")
-        self.register_command("l", self.do_look)
+        """Register Python-only commands (direction movement).
+
+        All other commands are provided by Lua scripts (games/common/lua/).
+        """
         self.register_command("north", lambda s, a: self.do_move(s, "north"))
         self.register_command("south", lambda s, a: self.do_move(s, "south"))
         self.register_command("east", lambda s, a: self.do_move(s, "east"))
         self.register_command("west", lambda s, a: self.do_move(s, "west"))
         self.register_command("up", lambda s, a: self.do_move(s, "up"))
         self.register_command("down", lambda s, a: self.do_move(s, "down"))
-        self.register_command("quit", self.do_quit, korean="나가기")
-        self.register_command("save", self.do_save, korean="저장")
-        self.register_command("who", self.do_who, korean="누구")
-        self.register_command("score", self.do_score, korean="점수")
-        self.register_command("say", self.do_say, korean="말")
-        self.register_command("inventory", self.do_inventory, korean="소지품")
-        self.register_command("i", self.do_inventory)
-        self.register_command("help", self.do_help, korean="도움")
-        self.register_command("exits", self.do_exits, korean="출구")
-        self.register_command("commands", self.do_commands, korean="명령어")
-        self.register_command("alias", self.do_alias, korean="별칭")
-        self.register_command("open", self.do_open, korean="열")
-        self.register_command("close", self.do_close, korean="닫")
-        self.register_command("lock", self.do_lock, korean="잠가")
-        self.register_command("unlock", self.do_unlock, korean="풀")
-        self.register_command("kill", self.do_kill, korean="죽이")
-        self.register_command("attack", self.do_kill, korean="공격")
-        self.register_command("flee", self.do_flee, korean="떠나")
-        self.register_command("rest", self.do_rest, korean="쉬")
-        self.register_command("stand", self.do_stand, korean="서")
-        self.register_command("sit", self.do_sit, korean="앉")
-        self.register_command("sleep", self.do_sleep, korean="자")
-        self.register_command("wake", self.do_stand)
-        self.register_command("cast", self.do_cast, korean="시전")
-        self.register_command("practice", self.do_practice, korean="연습")
+
+        # cast/practice — now provided by Lua (games/tbamud/lua/combat/spells.lua)
+
+        # Look fallback — Lua overwrites this with full implementation
+        async def _look_fallback(session: Session, args: str) -> None:
+            char = session.character
+            if not char:
+                return
+            room = self.world.get_room(char.room_vnum)
+            if room:
+                await session.send_line(f"\r\n{{cyan}}{room.proto.name}{{reset}}")
+            else:
+                await session.send_line("허공에 떠 있습니다...")
+        self.register_command("look", _look_fallback, korean="봐")
 
     async def do_look(self, session: Session, args: str) -> None:
-        char = session.character
-        if not char:
-            return
-        room = self.world.get_room(char.room_vnum)
-        if not room:
-            await session.send_line("허공에 떠 있습니다...")
-            return
-
-        if args:
-            # Look at something specific
-            await self._look_at(session, room, args.strip().lower())
-            return
-
-        # Room name
-        await session.send_line(f"\r\n{{cyan}}{room.proto.name}{{reset}}")
-        # Description
-        if room.proto.description:
-            await session.send_line(f"   {room.proto.description.rstrip()}")
-
-        # Exits
-        exit_names = []
-        for ex in room.proto.exits:
-            if ex.direction < 6:
-                dir_name = DIR_NAMES_KR[ex.direction]
-                if room.is_door_closed(ex.direction):
-                    dir_name = f"({dir_name})"
-                exit_names.append(dir_name)
-        if exit_names:
-            await session.send_line(f"{{green}}[ 출구: {' '.join(exit_names)} ]{{reset}}")
-
-        # Objects in room
-        for obj in room.objects:
-            await session.send_line(f"{{yellow}}{obj.proto.long_description.rstrip()}{{reset}}")
-
-        # Characters in room
-        for mob in room.characters:
-            if mob is char:
-                continue
-            if mob.is_npc:
-                await session.send_line(f"{{bright_cyan}}{mob.proto.long_description.rstrip()}{{reset}}")
-            else:
-                await session.send_line(f"{mob.name}이(가) 서 있습니다.")
-
-    async def _look_at(self, session: Session, room: Room, target: str) -> None:
-        """Look at a specific object, mob, or extra desc."""
-        char = session.character
-        if not char:
-            return
-
-        # Check extra descs
-        for ed in room.proto.extra_descs:
-            if target in ed.keywords.lower():
-                await session.send_line(ed.description)
-                return
-
-        # Check mobs
-        for mob in room.characters:
-            if mob is char:
-                continue
-            if target in mob.proto.keywords.lower():
-                if mob.proto.detailed_description:
-                    await session.send_line(mob.proto.detailed_description.rstrip())
-                else:
-                    await session.send_line(f"{mob.name}을(를) 바라봅니다.")
-                # Show equipment
-                if mob.equipment:
-                    await session.send_line("착용 중인 장비:")
-                    for pos in sorted(mob.equipment.keys()):
-                        obj = mob.equipment[pos]
-                        await session.send_line(f"  {obj.name}")
-                return
-
-        # Check objects in room
-        for obj in room.objects:
-            if target in obj.proto.keywords.lower():
-                await session.send_line(obj.proto.short_description)
-                for ed in obj.proto.extra_descs:
-                    if target in ed.keywords.lower():
-                        await session.send_line(ed.description)
-                        return
-                return
-
-        # Check inventory
-        for obj in char.inventory:
-            if target in obj.proto.keywords.lower():
-                await session.send_line(obj.proto.short_description)
-                return
-
-        await session.send_line("그런 것을 볼 수 없습니다.")
+        """Delegate to registered look command handler."""
+        handler = self.cmd_handlers.get("look")
+        if handler:
+            await handler(session, args)
 
     async def do_move(self, session: Session, direction: str) -> None:
         char = session.character
@@ -692,170 +638,7 @@ class Engine:
         # Show room
         await self.do_look(session, "")
 
-    # ── Door commands ────────────────────────────────────────────
-
-    def _find_door_direction(self, room: Room, target: str) -> int | None:
-        """Find door direction from keyword or direction name."""
-        if target in DIR_ABBREV:
-            return DIR_ABBREV[target]
-        if target in DIR_NAMES_KR_MAP:
-            return DIR_NAMES_KR_MAP[target]
-        if target in DIRS:
-            return DIRS.index(target)
-        # Try matching exit keywords
-        for ex in room.proto.exits:
-            if ex.keywords and target in ex.keywords.lower():
-                return ex.direction
-        return None
-
-    async def do_open(self, session: Session, args: str) -> None:
-        char = session.character
-        if not char:
-            return
-        room = self.world.get_room(char.room_vnum)
-        if not room:
-            return
-        if not args:
-            await session.send_line("무엇을 여시겠습니까?")
-            return
-
-        direction = self._find_door_direction(room, args.strip().lower())
-        if direction is None or not room.has_door(direction):
-            await session.send_line("그런 것을 찾을 수 없습니다.")
-            return
-
-        if not room.is_door_closed(direction):
-            await session.send_line("이미 열려 있습니다.")
-            return
-        if room.is_door_locked(direction):
-            await session.send_line("잠겨 있습니다.")
-            return
-
-        room.door_states[direction]["closed"] = False
-        await session.send_line("문을 열었습니다.")
-
-        # Open the other side too
-        for ex in room.proto.exits:
-            if ex.direction == direction:
-                other_room = self.world.get_room(ex.to_room)
-                if other_room:
-                    rev_dir = REVERSE_DIRS[direction]
-                    if other_room.has_door(rev_dir):
-                        other_room.door_states[rev_dir]["closed"] = False
-                    for other in other_room.characters:
-                        if other.session:
-                            await other.session.send_line("\r\n문이 열렸습니다.")
-                break
-
-    async def do_close(self, session: Session, args: str) -> None:
-        char = session.character
-        if not char:
-            return
-        room = self.world.get_room(char.room_vnum)
-        if not room:
-            return
-        if not args:
-            await session.send_line("무엇을 닫으시겠습니까?")
-            return
-
-        direction = self._find_door_direction(room, args.strip().lower())
-        if direction is None or not room.has_door(direction):
-            await session.send_line("그런 것을 찾을 수 없습니다.")
-            return
-
-        if room.is_door_closed(direction):
-            await session.send_line("이미 닫혀 있습니다.")
-            return
-
-        room.door_states[direction]["closed"] = True
-        await session.send_line("문을 닫았습니다.")
-
-        for ex in room.proto.exits:
-            if ex.direction == direction:
-                other_room = self.world.get_room(ex.to_room)
-                if other_room:
-                    rev_dir = REVERSE_DIRS[direction]
-                    if other_room.has_door(rev_dir):
-                        other_room.door_states[rev_dir]["closed"] = True
-                break
-
-    async def do_lock(self, session: Session, args: str) -> None:
-        char = session.character
-        if not char:
-            return
-        room = self.world.get_room(char.room_vnum)
-        if not room:
-            return
-        if not args:
-            await session.send_line("무엇을 잠그시겠습니까?")
-            return
-
-        direction = self._find_door_direction(room, args.strip().lower())
-        if direction is None or not room.has_door(direction):
-            await session.send_line("그런 것을 찾을 수 없습니다.")
-            return
-
-        if not room.is_door_closed(direction):
-            await session.send_line("먼저 닫아야 합니다.")
-            return
-        if room.is_door_locked(direction):
-            await session.send_line("이미 잠겨 있습니다.")
-            return
-
-        # Check for key
-        key_vnum = -1
-        for ex in room.proto.exits:
-            if ex.direction == direction:
-                key_vnum = ex.key_vnum
-                break
-        if key_vnum > 0:
-            has_key = any(o.proto.vnum == key_vnum for o in char.inventory)
-            if not has_key:
-                has_key = any(o.proto.vnum == key_vnum for o in char.equipment.values())
-            if not has_key:
-                await session.send_line("열쇠가 없습니다.")
-                return
-
-        room.door_states[direction]["locked"] = True
-        await session.send_line("문을 잠갔습니다.")
-
-    async def do_unlock(self, session: Session, args: str) -> None:
-        char = session.character
-        if not char:
-            return
-        room = self.world.get_room(char.room_vnum)
-        if not room:
-            return
-        if not args:
-            await session.send_line("무엇을 여시겠습니까?")
-            return
-
-        direction = self._find_door_direction(room, args.strip().lower())
-        if direction is None or not room.has_door(direction):
-            await session.send_line("그런 것을 찾을 수 없습니다.")
-            return
-
-        if not room.is_door_locked(direction):
-            await session.send_line("잠겨 있지 않습니다.")
-            return
-
-        key_vnum = -1
-        for ex in room.proto.exits:
-            if ex.direction == direction:
-                key_vnum = ex.key_vnum
-                break
-        if key_vnum > 0:
-            has_key = any(o.proto.vnum == key_vnum for o in char.inventory)
-            if not has_key:
-                has_key = any(o.proto.vnum == key_vnum for o in char.equipment.values())
-            if not has_key:
-                await session.send_line("열쇠가 없습니다.")
-                return
-
-        room.door_states[direction]["locked"] = False
-        await session.send_line("자물쇠를 열었습니다.")
-
-    # ── Position commands ────────────────────────────────────────
+    # ── Position constants ────────────────────────────────────────
 
     # Position constants
     POS_DEAD = 0
@@ -868,97 +651,7 @@ class Engine:
     POS_FIGHTING = 7
     POS_STANDING = 8
 
-    async def do_rest(self, session: Session, args: str) -> None:
-        char = session.character
-        if not char:
-            return
-        if char.position == self.POS_RESTING:
-            await session.send_line("이미 쉬고 있습니다.")
-            return
-        if char.fighting:
-            await session.send_line("전투 중에는 쉴 수 없습니다!")
-            return
-        char.position = self.POS_RESTING
-        await session.send_line("쉬기 시작합니다.")
-
-    async def do_sit(self, session: Session, args: str) -> None:
-        char = session.character
-        if not char:
-            return
-        if char.position == self.POS_SITTING:
-            await session.send_line("이미 앉아 있습니다.")
-            return
-        if char.fighting:
-            await session.send_line("전투 중에는 앉을 수 없습니다!")
-            return
-        char.position = self.POS_SITTING
-        await session.send_line("앉았습니다.")
-
-    async def do_stand(self, session: Session, args: str) -> None:
-        char = session.character
-        if not char:
-            return
-        if char.position == self.POS_STANDING:
-            await session.send_line("이미 서 있습니다.")
-            return
-        char.position = self.POS_STANDING
-        await session.send_line("일어섰습니다.")
-
-    async def do_sleep(self, session: Session, args: str) -> None:
-        char = session.character
-        if not char:
-            return
-        if char.position == self.POS_SLEEPING:
-            await session.send_line("이미 잠들어 있습니다.")
-            return
-        if char.fighting:
-            await session.send_line("전투 중에는 잠들 수 없습니다!")
-            return
-        char.position = self.POS_SLEEPING
-        await session.send_line("잠들기 시작합니다.")
-
-    # ── Combat stubs ─────────────────────────────────────────────
-
-    async def do_kill(self, session: Session, args: str) -> None:
-        char = session.character
-        if not char:
-            return
-        if not args:
-            await session.send_line("누구를 공격하시겠습니까?")
-            return
-        room = self.world.get_room(char.room_vnum)
-        if not room:
-            return
-        target_kw = args.strip().lower()
-        for mob in room.characters:
-            if mob is char:
-                continue
-            if mob.is_npc and target_kw in mob.proto.keywords.lower():
-                await session.send_line(f"{{red}}{mob.name}을(를) 공격합니다!{{reset}}")
-                char.fighting = mob
-                mob.fighting = char
-                return
-        await session.send_line("그런 대상을 찾을 수 없습니다.")
-
-    async def do_flee(self, session: Session, args: str) -> None:
-        char = session.character
-        if not char:
-            return
-        if not char.fighting:
-            await session.send_line("전투 중이 아닙니다.")
-            return
-        # Try random direction
-        import random
-        room = self.world.get_room(char.room_vnum)
-        if room and room.proto.exits:
-            ex = random.choice(room.proto.exits)
-            if ex.to_room >= 0 and not room.is_door_closed(ex.direction):
-                char.fighting.fighting = None
-                char.fighting = None
-                await session.send_line("{yellow}도망칩니다!{reset}")
-                await self.do_move(session, DIRS[ex.direction] if ex.direction < 6 else "north")
-                return
-        await session.send_line("도망칠 곳이 없습니다!")
+    # ── Combat commands (tbaMUD-specific, Sprint 4 → Lua) ────────
 
     async def do_cast(self, session: Session, args: str) -> None:
         """Cast a spell: cast <spell> [target]."""
@@ -1073,199 +766,6 @@ class Engine:
                 await session.send_line(
                     f"  {spell.korean_name:<12s} ({spell.name:<20s}) 숙련도: {prof}%"
                 )
-
-    # ── Info commands ────────────────────────────────────────────
-
-    async def do_quit(self, session: Session, args: str) -> None:
-        if session.character and session.character.fighting:
-            await session.send_line("전투 중에는 나갈 수 없습니다!")
-            return
-        await session.save_character()
-        await session.send_line("저장되었습니다. 안녕히 가세요!")
-        session._closed = True
-        await session.conn.close()
-
-    async def do_save(self, session: Session, args: str) -> None:
-        await session.save_character()
-        await session.send_line("저장되었습니다.")
-
-    async def do_who(self, session: Session, args: str) -> None:
-        await session.send_line("{cyan}━━━━━━ 현재 접속 중인 플레이어 ━━━━━━{reset}")
-        for name, s in self.players.items():
-            if s.character:
-                c = s.character
-                cls_id = s.player_data.get("class_id", 0)
-                cls = self.world.classes.get(cls_id)
-                cls_name = cls.name if cls else "모험가"
-                lvl = s.player_data.get("level", 1)
-                title = s.player_data.get("title", "")
-                line = f"  [{lvl:3d} {cls_name:6s}] {c.name}"
-                if title:
-                    line += f" {title}"
-                await session.send_line(line)
-        await session.send_line(f"{{cyan}}━━━━━━ 총 {len(self.players)}명 접속 중 ━━━━━━{{reset}}")
-
-    async def do_score(self, session: Session, args: str) -> None:
-        from games.tbamud.level import CLASS_NAMES, exp_to_next
-        c = session.character
-        if not c:
-            return
-        cls_name = CLASS_NAMES.get(c.class_id, "모험가")
-
-        lines = [
-            f"{{cyan}}━━━━━━ {c.name}의 정보 ━━━━━━{{reset}}",
-            f"  레벨: {c.level}  직업: {cls_name}  성별: {['중성','남성','여성'][session.player_data.get('sex',0)]}",
-            f"  HP: {{green}}{c.hp}/{c.max_hp}{{reset}}  "
-            f"마나: {{blue}}{c.mana}/{c.max_mana}{{reset}}  "
-            f"이동력: {c.move}/{c.max_move}",
-            f"  힘: {c.str}  민첩: {c.dex}  체력: {c.con}  "
-            f"지능: {c.intel}  지혜: {c.wis}  매력: {c.cha}",
-            f"  골드: {{yellow}}{c.gold}{{reset}}  경험치: {c.experience}",
-            f"  다음 레벨까지: {exp_to_next(c)}",
-            f"  히트롤: {c.hitroll}  댐롤: {c.damroll}  AC: {c.proto.armor_class if c.is_npc else 100}",
-            f"{{cyan}}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{{reset}}",
-        ]
-        await session.send_line("\r\n".join(lines))
-
-    async def do_say(self, session: Session, args: str) -> None:
-        if not args:
-            await session.send_line("무엇이라고 말하시겠습니까?")
-            return
-        char = session.character
-        if not char:
-            return
-        await session.send_line(f"{{green}}당신이 말합니다, '{args}'{{reset}}")
-        room = self.world.get_room(char.room_vnum)
-        if room:
-            for other in room.characters:
-                if other is not char and other.session:
-                    await other.session.send_line(
-                        f"\r\n{{green}}{char.name}이(가) 말합니다, '{args}'{{reset}}"
-                    )
-
-    async def do_inventory(self, session: Session, args: str) -> None:
-        char = session.character
-        if not char:
-            return
-        if not char.inventory:
-            await session.send_line("아무것도 들고 있지 않습니다.")
-            return
-        await session.send_line("소지품:")
-        for obj in char.inventory:
-            await session.send_line(f"  {obj.name}")
-
-    async def do_help(self, session: Session, args: str) -> None:
-        keyword = args.strip().lower() if args else "help"
-
-        # Exact match first
-        for entry in self.world.help_entries:
-            keywords = entry.get("keywords", [])
-            if isinstance(keywords, str):
-                keywords = [keywords]
-            for kw in keywords:
-                if kw.lower() == keyword:
-                    await session.send_line(entry.get("text", "도움말이 없습니다."))
-                    return
-
-        # Partial match
-        matches = []
-        for entry in self.world.help_entries:
-            keywords = entry.get("keywords", [])
-            if isinstance(keywords, str):
-                keywords = [keywords]
-            for kw in keywords:
-                if keyword in kw.lower():
-                    matches.append(entry)
-                    break
-        if len(matches) == 1:
-            await session.send_line(matches[0].get("text", "도움말이 없습니다."))
-        elif len(matches) > 1:
-            kw_list = []
-            for m in matches[:10]:
-                kws = m.get("keywords", [])
-                if isinstance(kws, str):
-                    kws = [kws]
-                kw_list.append(kws[0] if kws else "?")
-            await session.send_line(f"여러 도움말이 발견되었습니다: {', '.join(kw_list)}")
-        else:
-            await session.send_line(f"'{keyword}'에 대한 도움말이 없습니다.")
-
-    async def do_exits(self, session: Session, args: str) -> None:
-        char = session.character
-        if not char:
-            return
-        room = self.world.get_room(char.room_vnum)
-        if not room:
-            return
-        if not room.proto.exits:
-            await session.send_line("출구가 없습니다!")
-            return
-        await session.send_line("사용 가능한 출구:")
-        for ex in room.proto.exits:
-            if ex.direction >= 6:
-                continue
-            dir_name = DIR_NAMES_KR[ex.direction]
-            dest = self.world.get_room(ex.to_room)
-            dest_name = dest.name if dest else "알 수 없음"
-            status = ""
-            if room.has_door(ex.direction):
-                if room.is_door_closed(ex.direction):
-                    status = " (닫힘)"
-                else:
-                    status = " (열림)"
-            await session.send_line(f"  {dir_name:4s} - {dest_name}{status}")
-
-    async def do_commands(self, session: Session, args: str) -> None:
-        cmds = sorted(self.cmd_handlers.keys())
-        await session.send_line("사용 가능한 명령어:")
-        line = "  "
-        for cmd in cmds:
-            if len(line) + len(cmd) + 2 > 78:
-                await session.send_line(line)
-                line = "  "
-            line += cmd + "  "
-        if line.strip():
-            await session.send_line(line)
-        # Show Korean mappings count
-        await session.send_line(f"\r\n한국어 매핑: {len(self.cmd_korean)}개")
-
-    async def do_alias(self, session: Session, args: str) -> None:
-        """Set or show aliases."""
-        if not args:
-            aliases = session.player_data.get("aliases", {})
-            if isinstance(aliases, str):
-                import json
-                try:
-                    aliases = json.loads(aliases)
-                except (json.JSONDecodeError, TypeError):
-                    aliases = {}
-            if not aliases:
-                await session.send_line("설정된 별칭이 없습니다.")
-                return
-            await session.send_line("설정된 별칭:")
-            for k, v in aliases.items():
-                await session.send_line(f"  {k} = {v}")
-            return
-
-        parts = args.split(None, 1)
-        if len(parts) < 2:
-            await session.send_line("사용법: alias <이름> <명령어>")
-            return
-
-        alias_name, alias_cmd = parts
-        aliases = session.player_data.get("aliases", {})
-        if isinstance(aliases, str):
-            import json
-            try:
-                aliases = json.loads(aliases)
-            except (json.JSONDecodeError, TypeError):
-                aliases = {}
-        if len(aliases) >= 20:
-            await session.send_line("별칭은 최대 20개까지 설정할 수 있습니다.")
-            return
-        aliases[alias_name] = alias_cmd
-        session.player_data["aliases"] = aliases
-        await session.send_line(f"별칭 설정: {alias_name} = {alias_cmd}")
 
     # ── Social commands ──────────────────────────────────────────
 
@@ -1494,6 +994,7 @@ def main() -> None:
         level=logging.DEBUG,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+    logging.getLogger("watchfiles").setLevel(logging.WARNING)
 
     engine = Engine(config_path)
 

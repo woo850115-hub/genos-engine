@@ -33,6 +33,22 @@ def _make_world():
     return w
 
 
+def _load_common_lua(eng):
+    """Load common Lua commands into engine for testing."""
+    from core.lua_commands import LuaCommandRuntime
+    from pathlib import Path
+    eng.lua = LuaCommandRuntime(eng)
+    lua_dir = Path(__file__).resolve().parent.parent / "games" / "common" / "lua"
+    lib = lua_dir / "lib.lua"
+    if lib.exists():
+        eng.lua.load_source(lib.read_text(encoding="utf-8"), "lib")
+    cmd_dir = lua_dir / "commands"
+    if cmd_dir.exists():
+        for f in sorted(cmd_dir.glob("*.lua")):
+            eng.lua.load_source(f.read_text(encoding="utf-8"), f"cmd/{f.stem}")
+    eng.lua.register_all_commands()
+
+
 def _make_engine_and_session(world=None):
     if world is None:
         world = _make_world()
@@ -44,6 +60,7 @@ def _make_engine_and_session(world=None):
     eng.cmd_handlers = {}
     eng.cmd_korean = {}
     eng._register_core_commands()
+    _load_common_lua(eng)
     eng._load_korean_mappings()
     eng.game_name = "tbamud"
 
@@ -160,7 +177,7 @@ class TestAlias:
     @pytest.mark.asyncio
     async def test_alias_command(self):
         eng, session = _make_engine_and_session()
-        await eng.do_alias(session, "gg look")
+        await eng.cmd_handlers["alias"](session, "gg look")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("별칭 설정" in c for c in calls)
         assert session.player_data["aliases"]["gg"] == "look"
@@ -169,7 +186,7 @@ class TestAlias:
     async def test_alias_list_empty(self):
         eng, session = _make_engine_and_session()
         session.player_data["aliases"] = {}
-        await eng.do_alias(session, "")
+        await eng.cmd_handlers["alias"](session, "")
         calls = [str(c) for c in session.send_line.call_args_list]
         assert any("없습니다" in c for c in calls)
 
