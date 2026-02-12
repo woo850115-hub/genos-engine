@@ -11,10 +11,8 @@ from games.tbamud.combat.spells import (
     SPELL_CURSE, SPELL_POISON,
     find_spell, can_cast, cast_spell, apply_buff, has_affect,
 )
-from core.engine import Engine
 from core.world import (
     MobInstance, MobProto, ObjInstance, ItemProto,
-    Room, RoomProto, World,
 )
 
 
@@ -142,96 +140,3 @@ class TestExtendedSpellEffects:
         assert has_affect(target, SPELL_CHARM)
 
 
-class TestWhereCommand:
-    @pytest.mark.asyncio
-    async def test_where_no_players(self):
-        from games.tbamud.commands.info import do_where
-        w = World()
-        room = RoomProto(
-            vnum=1, name="방", description="", zone_vnum=0, sector=0,
-            flags=[], exits=[], extra_descs=[], scripts=[],
-        )
-        w.rooms[1] = Room(proto=room)
-
-        eng = Engine.__new__(Engine)
-        eng.world = w
-        eng.config = {"world": {"start_room": 1}}
-        eng.sessions = {}
-        eng.players = {}
-        eng.cmd_handlers = {}
-        eng.cmd_korean = {}
-        eng._register_core_commands()
-        eng.game_name = "tbamud"
-
-        session = MagicMock()
-        session.send_line = AsyncMock()
-        session.engine = eng
-        proto = MobProto(
-            vnum=-1, keywords="t", short_desc="t",
-            long_desc="", detail_desc="",
-            level=1, hitroll=0, armor_class=100, max_hp=1,
-            damage_dice="1d4+0", gold=0, experience=0,
-            act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
-        )
-        session.character = MobInstance(
-            id=1, proto=proto, room_vnum=1, hp=20, max_hp=20,
-            player_id=1, player_name="테스터", session=session,
-        )
-        w.rooms[1].characters.append(session.character)
-
-        await do_where(session, "")
-        calls = [str(c) for c in session.send_line.call_args_list]
-        assert any("없습니다" in c for c in calls)
-
-
-class TestConsiderCommand:
-    @pytest.mark.asyncio
-    async def test_consider_easy(self):
-        from games.tbamud.commands.info import do_consider
-        w = World()
-        room = RoomProto(
-            vnum=1, name="방", description="", zone_vnum=0, sector=0,
-            flags=[], exits=[], extra_descs=[], scripts=[],
-        )
-        w.rooms[1] = Room(proto=room)
-
-        eng = Engine.__new__(Engine)
-        eng.world = w
-        eng.config = {"world": {"start_room": 1}}
-        eng.sessions = {}
-        eng.players = {}
-        eng.cmd_handlers = {}
-        eng.cmd_korean = {}
-        eng._register_core_commands()
-        eng.game_name = "tbamud"
-
-        session = MagicMock()
-        session.send_line = AsyncMock()
-        session.engine = eng
-        proto = MobProto(
-            vnum=-1, keywords="t", short_desc="t",
-            long_desc="", detail_desc="",
-            level=20, hitroll=0, armor_class=100, max_hp=1,
-            damage_dice="1d4+0", gold=0, experience=0,
-            act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
-        )
-        session.character = MobInstance(
-            id=1, proto=proto, room_vnum=1, hp=100, max_hp=100,
-            player_id=1, player_name="테스터", player_level=20,
-        )
-        w.rooms[1].characters.append(session.character)
-
-        # Add weak mob
-        mob_proto = MobProto(
-            vnum=50, keywords="rat 쥐", short_desc="쥐",
-            long_desc="", detail_desc="",
-            level=1, hitroll=0, armor_class=100, max_hp=2,
-            damage_dice="1d1+0", gold=0, experience=10,
-            act_flags=[], aff_flags=[], alignment=0, sex=0, scripts=[],
-        )
-        mob = MobInstance(id=50, proto=mob_proto, room_vnum=1, hp=5, max_hp=5)
-        w.rooms[1].characters.append(mob)
-
-        await do_consider(session, "rat")
-        calls = [str(c) for c in session.send_line.call_args_list]
-        assert any("눈을 감고" in c for c in calls)

@@ -12,18 +12,22 @@ from core.world import (
 
 
 def _load_common_lua(eng):
-    """Load common Lua commands into engine for testing."""
+    """Load common + tbaMUD Lua commands into engine for testing."""
     from core.lua_commands import LuaCommandRuntime
     from pathlib import Path
     eng.lua = LuaCommandRuntime(eng)
-    lua_dir = Path(__file__).resolve().parent.parent / "games" / "common" / "lua"
-    lib = lua_dir / "lib.lua"
-    if lib.exists():
-        eng.lua.load_source(lib.read_text(encoding="utf-8"), "lib")
-    cmd_dir = lua_dir / "commands"
-    if cmd_dir.exists():
-        for f in sorted(cmd_dir.glob("*.lua")):
-            eng.lua.load_source(f.read_text(encoding="utf-8"), f"cmd/{f.stem}")
+    base = Path(__file__).resolve().parent.parent / "games"
+    for scope in ("common", "tbamud"):
+        lua_dir = base / scope / "lua"
+        if not lua_dir.exists():
+            continue
+        lib = lua_dir / "lib.lua"
+        if lib.exists():
+            eng.lua.load_source(lib.read_text(encoding="utf-8"), f"{scope}/lib")
+        for f in sorted(lua_dir.rglob("*.lua")):
+            if f.name == "lib.lua":
+                continue
+            eng.lua.load_source(f.read_text(encoding="utf-8"), f"{scope}/{f.stem}")
     eng.lua.register_all_commands()
 
 
@@ -59,6 +63,9 @@ def _make_engine_session(world=None):
     _load_common_lua(eng)
     eng._load_korean_mappings()
     eng.game_name = "tbamud"
+    # Set up plugin with death handler
+    from games.tbamud.game import TbaMudPlugin
+    eng._plugin = TbaMudPlugin()
 
     session = MagicMock()
     session.send_line = AsyncMock()

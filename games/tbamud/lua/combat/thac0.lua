@@ -135,14 +135,29 @@ local function get_attack_type(attacker)
 end
 
 local function damage_message(damage)
-    if damage <= 0 then return "빗나감"
-    elseif damage <= 2 then return "긁힘"
-    elseif damage <= 5 then return "약한 타격"
-    elseif damage <= 10 then return "타격"
-    elseif damage <= 15 then return "강한 타격"
-    elseif damage <= 20 then return "매우 강한 타격"
-    elseif damage <= 30 then return "치명적 타격"
-    else return "파괴적 타격"
+    -- Original tbaMUD-style 23-level damage messages
+    if damage <= 0 then return "빗나감", "{cyan}"
+    elseif damage == 1 then return "간신히 긁힘", "{cyan}"
+    elseif damage <= 2 then return "긁힘", "{cyan}"
+    elseif damage <= 4 then return "약간 상처", "{yellow}"
+    elseif damage <= 6 then return "상처", "{yellow}"
+    elseif damage <= 8 then return "꽤 큰 상처", "{yellow}"
+    elseif damage <= 10 then return "타격", "{yellow}"
+    elseif damage <= 13 then return "강한 타격", "{bright_yellow}"
+    elseif damage <= 16 then return "매우 강한 타격", "{bright_yellow}"
+    elseif damage <= 20 then return "극심한 타격", "{bright_yellow}"
+    elseif damage <= 25 then return "참혹한 타격", "{red}"
+    elseif damage <= 30 then return "치명적 타격", "{red}"
+    elseif damage <= 40 then return "파괴적 타격", "{red}"
+    elseif damage <= 50 then return "분쇄", "{bright_red}"
+    elseif damage <= 65 then return "황폐화", "{bright_red}"
+    elseif damage <= 80 then return "절멸", "{bright_red}"
+    elseif damage <= 100 then return "소멸", "{bright_magenta}"
+    elseif damage <= 130 then return "말살", "{bright_magenta}"
+    elseif damage <= 170 then return "섬멸", "{bright_magenta}"
+    elseif damage <= 220 then return "전멸", "{bright_white}"
+    elseif damage <= 280 then return "천벌", "{bright_white}"
+    else return "신의 일격", "{bright_white}"
     end
 end
 
@@ -179,17 +194,45 @@ register_hook("combat_round", function(ctx, attacker, defender)
             end
         else
             local dmg = roll_damage(ctx, attacker)
-            local severity = damage_message(dmg)
+
+            -- Sanctuary: halve damage
+            if ctx:has_spell_affect(defender, 14) then
+                dmg = math.max(1, math.floor(dmg / 2))
+            end
+
+            local severity, color = damage_message(dmg)
             ctx:send_to(attacker,
-                "{red}" .. defender.name .. "에게 " .. atk_name ..
+                color .. defender.name .. "에게 " .. atk_name ..
                 "으로 " .. severity .. "을 입힙니다! [" .. dmg .. "]{reset}")
             if defender.session then
                 ctx:send_to(defender,
-                    "{red}" .. attacker.name .. "의 " .. atk_name ..
+                    color .. attacker.name .. "의 " .. atk_name ..
                     "이 " .. severity .. "을 입힙니다! [" .. dmg .. "]{reset}")
             end
             defender.hp = defender.hp - dmg
+
+            -- Hide breaks on damage taken
+            if ctx:has_affect(defender, 1002) then
+                ctx:remove_affect(defender, 1002)
+                if defender.session then
+                    ctx:send_to(defender, "공격을 받아 모습이 드러납니다!")
+                end
+            end
         end
+    end
+
+    -- Show defender condition to attacker
+    if defender.hp > 0 and attacker.session then
+        local ratio = defender.hp / math.max(1, defender.max_hp)
+        local condition
+        if ratio >= 1.0 then condition = "완벽한 상태"
+        elseif ratio >= 0.75 then condition = "약간의 상처"
+        elseif ratio >= 0.50 then condition = "상당한 부상"
+        elseif ratio >= 0.30 then condition = "{red}심각한 부상{reset}"
+        elseif ratio >= 0.15 then condition = "{bright_red}거의 죽어감{reset}"
+        else condition = "{bright_red}치명적 상태!{reset}"
+        end
+        ctx:send_to(attacker, "[" .. defender.name .. ": " .. condition .. "]")
     end
 
     -- Check death

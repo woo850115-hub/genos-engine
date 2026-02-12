@@ -9,6 +9,45 @@ if TYPE_CHECKING:
     from core.world import MobInstance, ObjInstance, World
 
 
+def _make_corpse(victim: MobInstance, world: Any = None) -> ObjInstance:
+    """Create a corpse container object holding victim's belongings."""
+    from core.world import ItemProto, ObjInstance, _next_id
+
+    corpse_name = f"{victim.name}의 시체"
+    proto = ItemProto(
+        vnum=-victim.proto.vnum if victim.proto else -1,
+        keywords=f"시체 corpse {victim.proto.keywords}",
+        short_desc=corpse_name,
+        long_desc=f"{corpse_name}가 바닥에 놓여 있습니다.",
+        item_type="container",
+        weight=50, cost=0, min_level=0,
+        wear_slots=[], flags=[], values={"corpse": True, "timer": 5},
+        affects=[], extra_descs=[], scripts=[], ext={},
+    )
+    corpse = ObjInstance(
+        id=_next_id(), proto=proto, values=dict(proto.values),
+    )
+
+    # Transfer inventory + equipment into corpse
+    for obj in victim.inventory:
+        obj.carried_by = None
+        obj.in_obj = corpse
+        corpse.contains.append(obj)
+    for slot, obj in victim.equipment.items():
+        obj.worn_by = None
+        obj.wear_slot = ""
+        obj.in_obj = corpse
+        corpse.contains.append(obj)
+
+    victim.inventory.clear()
+    victim.equipment.clear()
+    return corpse
+
+
+# need Any for type hint in _make_corpse
+from typing import Any
+
+
 async def handle_death(engine: Engine, victim: MobInstance,
                        killer: MobInstance | None = None) -> None:
     """Handle character death — drop corpse, award exp, respawn player."""
@@ -20,22 +59,13 @@ async def handle_death(engine: Engine, victim: MobInstance,
         victim.fighting.fighting = None
         victim.fighting = None
 
-    # Create corpse with victim's inventory
-    corpse_items: list[ObjInstance] = list(victim.inventory)
-    # Equipment → corpse
-    for slot, obj in list(victim.equipment.items()):
-        corpse_items.append(obj)
-    victim.inventory.clear()
-    victim.equipment.clear()
+    # Create corpse container with victim's belongings
+    corpse = _make_corpse(victim)
 
-    # Drop corpse items into room
+    # Place corpse in room
     if room:
-        for obj in corpse_items:
-            obj.carried_by = None
-            obj.worn_by = None
-            obj.wear_slot = -1
-            obj.room_vnum = victim.room_vnum
-            room.objects.append(obj)
+        corpse.room_vnum = victim.room_vnum
+        room.objects.append(corpse)
 
     # Gold drop
     if victim.gold > 0 and room:
@@ -71,6 +101,23 @@ async def handle_death(engine: Engine, victim: MobInstance,
                     await ch.session.send_line(
                         f"{{red}}{victim.name}이(가) 쓰러집니다.{{reset}}"
                     )
+
+        # Auto-loot: if killer has autoloot toggle, take items from corpse
+        if killer and not killer.is_npc and killer.session and room:
+            toggles = killer.session.player_data.get("toggles", {})
+            if toggles.get("autoloot") and corpse.contains:
+                picked = list(corpse.contains)
+                for obj in picked:
+                    corpse.contains.remove(obj)
+                    obj.in_obj = None
+                    obj.carried_by = killer
+                    killer.inventory.append(obj)
+                    await killer.session.send_line(
+                        f"{{yellow}}{obj.name}을(를) 자동으로 주웠습니다.{{reset}}"
+                    )
+            if toggles.get("autogold") and victim.gold > 0 and not toggles.get("autoloot"):
+                # autogold already handled above if killer got gold
+                pass
     else:
         # Player death
         if victim.session:

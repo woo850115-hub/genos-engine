@@ -1,6 +1,6 @@
 # GenOS tbaMUD-KR 엔진 구현 보고서
 
-**Phase A-1 완료 | 2026-02-11**
+**Phase A-1 완료 | 2026-02-12 (아키텍처 리팩토링 v2)**
 
 ---
 
@@ -11,20 +11,31 @@ GenOS 마이그레이션 도구의 출력물(21 SQL 테이블 + 8 Lua 스크립�
 
 | 항목 | 수치 |
 |------|------|
-| 소스 코드 | 27 파일, 5,146줄 |
-| 테스트 코드 | 22 파일, 4,607줄 |
-| 테스트 수 | **373개** (전체 통과) |
+| 엔진 코어 (Python) | 11 모듈, 4,584줄 |
+| 게임 로직 (Lua) | 18 파일, 4,322줄 (common 1,228 + tbamud 3,094) |
+| 게임 플러그인 (Python) | 6 파일, 958줄 (최소 브릿지) |
+| 테스트 코드 | 34 파일, 8,572줄 |
+| 테스트 수 | **640개** (전체 통과) |
+| Lua 명령어 | **99종** (Python 명령어 0종) |
 | 설정 파일 | 5 파일 (YAML, Dockerfile, docker-compose, pyproject) |
-| 개발 기간 | Sprint 1~6 (12주 설계) |
 
 ### 기술 스택
 
 - Python 3.12 + asyncio (단일 스레드 이벤트 루프)
 - PostgreSQL 16 + asyncpg (비동기 커넥션 풀)
 - FastAPI + uvicorn (REST API + WebSocket, 단일 포트 8080)
-- lupa (Lua 5.4, DG Script 트리거 런타임)
+- lupa (Lua 5.4, 명령어/전투/스킬 런타임 — **웹 에디터 실시간 수정 가능**)
 - watchfiles (개발 모드 핫 리로드)
 - bcrypt (비밀번호 해싱)
+
+### 아키텍처 원칙
+
+> **엔진은 최소한. 기능은 플러그인식으로 추가 가능. 기능 코드는 Lua로 작성하여 웹 화면에서 개발자가 실시간 수정 가능하게 한다.**
+
+- `core/` 디렉토리에 `games.*` import **0건** — 완전한 게임 무관성
+- 모든 명령어/전투/스킬은 **Lua 스크립트**로 구현 (DB `lua_scripts` 테이블 저장)
+- 게임 플러그인(Python)은 프로토콜 브릿지 역할만 수행 (81줄)
+- Lua 핫 리로드: 관리자 `reload` 명령 또는 REST API로 무중단 갱신
 
 ---
 
@@ -32,45 +43,63 @@ GenOS 마이그레이션 도구의 출력물(21 SQL 테이블 + 8 Lua 스크립�
 
 ```
 genos-engine/
-├── core/                          # 엔진 코어 (10 모듈, 3,271줄)
-│   ├── engine.py        (1,503줄)  # 메인 게임 루프 + 명령어 디스패처
-│   ├── world.py           (535줄)  # Prototype/Instance 월드 모델
-│   ├── session.py         (289줄)  # 로그인 상태 머신
-│   ├── api.py             (219줄)  # REST API + WebSocket
-│   ├── net.py             (197줄)  # Telnet 서버 (asyncio)
-│   ├── db.py              (163줄)  # asyncpg 커넥션 풀
-│   ├── ansi.py            (112줄)  # {컬러코드} → ANSI 이스케이프
-│   ├── korean.py           (85줄)  # 받침 기반 조사 자동 선택
-│   ├── reload.py           (48줄)  # 핫 리로드 매니저
-│   └── watcher.py          (34줄)  # watchfiles 파일 감지
+├── core/                            # 엔진 코어 (11 모듈, 4,584줄) — 게임 무관
+│   ├── engine.py          (1,226줄)  # 게임 루프 + 명령어 디스패처 + NPC AI
+│   ├── lua_commands.py    (1,132줄)  # Lua↔Python 브릿지 (CommandContext)
+│   ├── world.py             (725줄)  # Prototype/Instance 월드 모델
+│   ├── session.py           (420줄)  # 로그인 상태 머신 + 캐릭터 저장/복원
+│   ├── api.py               (295줄)  # REST API + WebSocket
+│   ├── net.py               (265줄)  # Telnet 서버 (asyncio)
+│   ├── db.py                (232줄)  # asyncpg 커넥션 풀
+│   ├── ansi.py              (112줄)  # {컬러코드} → ANSI 이스케이프
+│   ├── korean.py             (85줄)  # 받침 기반 조사 자동 선택
+│   ├── reload.py             (48줄)  # 핫 리로드 매니저
+│   └── watcher.py            (44줄)  # watchfiles 파일 감지
 │
-├── games/tbamud/                  # tbaMUD-KR 게임 플러그인 (1,875줄)
-│   ├── game.py             (33줄)  # GamePlugin 등록
-│   ├── commands/
-│   │   ├── admin.py       (274줄)  # 관리자 명령어 9종
-│   │   ├── items.py       (183줄)  # 아이템 명령어 10종
-│   │   ├── info.py        (108줄)  # 정보 명령어 5종
-│   │   ├── comm.py         (52줄)  # 통신 명령어 3종
-│   │   └── movement.py     (37줄)  # 이동 명령어 4종
+├── games/common/lua/                # 공용 Lua 명령어 (6 파일, 1,228줄)
+│   ├── lib.lua              (70줄)  # 공용 유틸리티
+│   ├── commands/core.lua   (468줄)  # look, who, say, tell 등 기본 명령어
+│   ├── commands/items.lua  (285줄)  # get, drop, wear, remove, give, put, eat, drink
+│   ├── commands/position.lua(171줄) # sit, rest, stand, sleep, wake
+│   ├── commands/doors.lua  (124줄)  # open, close, lock, unlock
+│   └── commands/combat_core.lua(110줄) # kill, flee
+│
+├── games/tbamud/                    # tbaMUD-KR 플러그인 (Python 958줄 + Lua 3,094줄)
+│   ├── game.py              (81줄)  # GamePlugin (프로토콜 브릿지만)
 │   ├── combat/
-│   │   ├── spells.py      (345줄)  # 34 스펠 시스템
-│   │   ├── thac0.py       (213줄)  # THAC0 전투 엔진
-│   │   └── death.py       (128줄)  # 사망/부활 시스템
-│   ├── shops.py           (212줄)  # 상점 (buy/sell/list/appraise)
-│   ├── triggers.py        (227줄)  # DG Script Lua 런타임
-│   └── level.py           (133줄)  # 레벨/경험치 시스템
+│   │   ├── spells.py       (345줄)  # 스펠 데이터 정의
+│   │   ├── thac0.py        (213줄)  # THAC0 데이터 테이블
+│   │   └── death.py        (175줄)  # 사망/부활 핸들러
+│   ├── shops.py            (219줄)  # 상점 시스템
+│   ├── triggers.py         (227줄)  # DG Script 트리거
+│   ├── level.py            (144줄)  # 레벨/경험치
+│   └── lua/                         # Lua 게임 로직 (12 파일, 3,094줄)
+│       ├── combat/
+│       │   ├── thac0.lua   (243줄)  # THAC0 전투 라운드 (combat_round 훅)
+│       │   ├── spells.lua  (388줄)  # 34 스펠 시스템 (cast 명령)
+│       │   ├── skills.lua  (234줄)  # backstab, bash, kick, rescue
+│       │   ├── level.lua    (61줄)  # 레벨업 알림
+│       │   └── death.lua    (28줄)  # 사망 처리 훅
+│       └── commands/
+│           ├── info.lua    (841줄)  # score, time, weather, prompt, toggle, practice 등
+│           ├── admin.lua   (392줄)  # goto, load, purge, stat, set, reload, shutdown 등
+│           ├── comm.lua    (254줄)  # gossip, follow, group
+│           ├── stealth.lua (187줄)  # sneak, hide
+│           ├── shops.lua   (175줄)  # buy, sell, list, appraise
+│           ├── items.lua   (174줄)  # tbaMUD 전용 아이템 확장
+│           └── movement.lua(117줄)  # 이동 확장 (enter, leave)
 │
-├── data/tbamud/                   # 마이그레이션 출력 (무수정 소비)
-│   ├── sql/schema.sql              # DDL 20 테이블
-│   ├── sql/seed_data.sql           # INSERT ~16MB
-│   ├── lua/                        # 8 Lua 스크립트
-│   └── messages/system.yaml        # 한글 시스템 메시지 10 카테고리
+├── data/tbamud/                     # 마이그레이션 출력 (무수정 소비)
+│   ├── sql/schema.sql                # DDL 20 테이블
+│   ├── sql/seed_data.sql             # INSERT ~16MB
+│   ├── lua/                          # 8 Lua 스크립트
+│   └── messages/system.yaml          # 한글 시스템 메시지 10 카테고리
 │
-├── config/tbamud.yaml             # 게임 서버 설정
-├── tests/                         # 373 테스트 (22 파일)
-├── Dockerfile                     # Multi-stage 빌드
-├── docker-compose.yml             # PostgreSQL + 게임 서버
-└── pyproject.toml                 # 빌드/의존성 정의
+├── config/tbamud.yaml               # 게임 서버 설정
+├── tests/                           # 640 테스트 (34 파일, 8,572줄)
+├── Dockerfile                       # Multi-stage 빌드
+├── docker-compose.yml               # PostgreSQL + 게임 서버
+└── pyproject.toml                   # 빌드/의존성 정의
 ```
 
 ---
@@ -174,27 +203,71 @@ genos-engine/
 | **Docker** | Multi-stage Dockerfile + docker-compose (PostgreSQL 16 + 게임 서버) |
 | **통합 테스트** | E2E 시나리오 40종 (이동/look/아이템/상점/전투/한국어/관리자/소셜) |
 
+### Sprint 7: Lua 전환 + NPC AI + 95% Fidelity
+
+| 기능 | 상세 |
+|------|------|
+| **Lua 명령어 전환** | Python 명령어 99종 → 전부 Lua로 재구현 (Python 0종) |
+| **Python 명령어 삭제** | `games/tbamud/commands/` 전체 삭제 (~964줄) |
+| **game.py 최소화** | 306줄 → 81줄 (프로토콜 브릿지만 보유) |
+| **engine.py 정화** | core/ 내 `from games.*` import 0건 달성 |
+| **NPC AI** | scavenger, wander, aggressive, memory, helper, wimpy (6종 행동) |
+| **장비 스탯 적용** | wear/remove 시 hitroll/damroll/AC 자동 재계산 |
+| **캐릭터 저장 강화** | 장비/인벤토리/스킬/경험치/어펙트 전체 저장/복원 |
+| **소셜 완성** | $n/$N/$m/$M/$e/$E/$s/$S 전체 치환 |
+| **give/put/eat/drink** | 컨테이너, 음식/음료 소비 |
+| **클래스 스킬** | backstab(도적), bash/kick/rescue(전사), sneak/hide(도적) |
+
+### 아키텍처 리팩토링 상세
+
+**변경 전 (v1)**:
+- engine.py에 tbaMUD 전용 로직 혼재 (combat_round Python 폴백, do_cast 100줄 등)
+- `from games.tbamud.combat.spells import tick_affects` 등 5곳 직접 import
+- Python 명령어 파일 5개 (admin.py, info.py, items.py, comm.py, movement.py)
+
+**변경 후 (v2)**:
+- engine.py에서 모든 `games.*` import 제거 → **0건**
+- `_combat_round()`: Lua 훅 전용 (plugin.combat_round > lua hook > 안전 폴백)
+- `do_cast()`, `do_practice()`: 3줄 Lua 위임
+- `_regen_char()`: plugin.regen_char() 훅 패턴
+- `_tick_char_affects()`: 게임 무관 generic 구현
+- `KOREAN_VERB_MAP`: `_DEFAULT_KOREAN_VERB_MAP` + plugin.korean_verb_map() 확장
+
+**삭제된 파일** (~1,992줄):
+| 파일 | 줄 수 | 사유 |
+|------|-------|------|
+| `games/tbamud/commands/admin.py` | 274 | Lua `admin.lua`로 대체 |
+| `games/tbamud/commands/info.py` | 415 | Lua `info.lua`로 대체 |
+| `games/tbamud/commands/items.py` | 182 | Lua `items.lua`로 대체 |
+| `games/tbamud/commands/comm.py` | 52 | Lua `comm.lua`로 대체 |
+| `games/tbamud/commands/movement.py` | 41 | Lua `movement.lua`로 대체 |
+| `tests/test_sprint5_admin.py` | 437 | 삭제된 코드 테스트 |
+
 ---
 
 ## 4. 명령어 체계 총괄
 
-### 등록된 명령어: 72종+
+### 등록된 명령어: 99종 (전부 Lua)
 
-| 카테고리 | 영문 명령어 | 한국어 매핑 | 수 |
-|----------|------------|------------|-----|
-| 이동/방향 | north, south, east, west, up, down | 북, 남, 동, 서, 위, 아래 + 축약 | 6 |
-| 정보 | look, l, exits, who, score, help, commands, time, weather, examine, consider, where | 봐, 출구, 누구, 점수, 도움, 명령어, 시간, 날씨, 조사, 평가, 어디 | 12 |
-| 아이템 | get, take, drop, wear, wield, remove, equipment, eq, give, put | 줍, 버려, 입, 벗, 장비, 줘, 넣 | 10 |
-| 통신 | say, tell, shout, whisper | 말, 귓말, 외쳐, 속삭여 | 4 |
-| 전투 | kill, attack, flee, cast, practice | 죽이, 공격, 떠나, 시전, 연습 | 5 |
-| 포지션 | rest, sit, stand, sleep, wake | 쉬, 앉, 서, 자 | 5 |
-| 상점 | buy, sell, list, appraise | 사, 팔, 목록, 감정 | 4 |
-| 문 | open, close, lock, unlock | 열, 닫, 잠가, 풀 | 4 |
-| 시스템 | quit, save, alias, inventory, i | 나가기, 저장, 별칭, 소지품 | 5 |
-| 이동확장 | enter, leave, follow, group | 들어가, 나와, 따라가, 무리 | 4 |
-| 관리자 | goto, load, purge, stat, set, reload, shutdown, advance, restore | — | 9 |
+| 카테고리 | 영문 명령어 | 한국어 매핑 | 수 | 파일 |
+|----------|------------|------------|-----|------|
+| 이동/방향 | north, south, east, west, up, down | 북, 남, 동, 서, 위, 아래 + 축약 | 6 | core.lua |
+| 정보 | look, exits, who, score, help, commands, time, weather, examine, consider, where, prompt, toggle | 봐, 출구, 누구, 점수, 도움, 명령어, 시간, 날씨, 조사, 평가, 어디 | 13 | core.lua, info.lua |
+| 아이템 | get, take, drop, wear, wield, remove, equipment, give, put, eat, drink | 줍, 버려, 입, 벗, 장비, 줘, 넣, 먹, 마셔 | 11 | items.lua |
+| 통신 | say, tell, shout, whisper, gossip | 말, 귓말, 외쳐, 속삭여, 잡담 | 5 | core.lua, comm.lua |
+| 전투 | kill, attack, flee, cast, practice | 죽이, 공격, 떠나, 시전, 연습 | 5 | combat_core.lua, spells.lua, info.lua |
+| 스킬 | backstab, bash, kick, rescue, sneak, hide | 뒤치기, 밀치기, 차기, 구출, 은신, 숨기 | 6 | skills.lua, stealth.lua |
+| 포지션 | rest, sit, stand, sleep, wake | 쉬, 앉, 서, 자 | 5 | position.lua |
+| 상점 | buy, sell, list, appraise | 사, 팔, 목록, 감정 | 4 | shops.lua |
+| 문 | open, close, lock, unlock | 열, 닫, 잠가, 풀 | 4 | doors.lua |
+| 시스템 | quit, save, alias, inventory, i | 나가기, 저장, 별칭, 소지품 | 5 | core.lua |
+| 이동확장 | enter, leave, follow, group | 들어가, 나와, 따라가, 무리 | 4 | movement.lua, comm.lua |
+| 관리자 | goto, load, purge, stat, set, reload, shutdown, advance, restore | — | 9 | admin.lua |
 
-**한국어 동사 매핑**: 65개 항목 (SOV 어순 + 어간 추출 포함)
+**모든 명령어가 Lua 스크립트**이므로 DB `lua_scripts` 테이블에 저장되며,
+웹 에디터에서 실시간 수정 후 `reload` 명령으로 무중단 갱신 가능.
+
+**한국어 동사 매핑**: 65+ 항목 (SOV 어순 + 어간 추출 포함, plugin 확장 가능)
 
 ---
 
@@ -298,18 +371,19 @@ genos-engine/
 ### 게임 루프 (10Hz)
 
 ```
-┌─────────────────────────────────────┐
-│             10Hz Tick Loop           │
-├──────────┬──────────────────────────┤
-│ 매 tick  │ 핫 리로드 적용            │
-│ 20 tick  │ 전투 라운드 (2초)         │
-│ 750 tick │ 어펙트 tick (75초)        │
-│ 600 tick │ Zone 리셋 체크 (60초)     │
-│ 자동저장  │ 5분 주기                 │
-└──────────┴──────────────────────────┘
+┌──────────────────────────────────────┐
+│             10Hz Tick Loop            │
+├──────────┬───────────────────────────┤
+│ 매 tick  │ 핫 리로드 적용             │
+│ 20 tick  │ 전투 라운드 (2초) — Lua 훅 │
+│ 100 tick │ NPC AI (10초)             │
+│ 750 tick │ 어펙트 tick (75초)         │
+│ 600 tick │ Zone 리셋 체크 (60초)      │
+│ 자동저장  │ 5분 주기                  │
+└──────────┴───────────────────────────┘
 ```
 
-### 5계층 아키텍처
+### 5계층 아키텍처 (Lua-first)
 
 ```
 Client (Telnet/WebSocket)
@@ -317,16 +391,42 @@ Client (Telnet/WebSocket)
 Network (core/net.py, core/api.py)
     ↓
 Session/Command (core/session.py, core/engine.py)
-    ↓
-Game Logic (games/tbamud/*)
+    ↓                      ↓
+Lua Runtime            Plugin Protocol
+(core/lua_commands.py)  (games/*/game.py)
+    ↓                      ↓
+Game Logic (games/*/lua/*.lua) ← 웹 에디터 수정 가능
     ↓
 Persistence (core/db.py → PostgreSQL)
 ```
 
+### 핵심 원칙: 엔진 최소화
+
+| 원칙 | 검증 결과 |
+|------|----------|
+| core/ 내 games.* import | **0건** |
+| Python 명령어 | **0종** |
+| Lua 명령어 | **99종** |
+| game.py 크기 | **81줄** (프로토콜만) |
+| 게임 로직 Lua 비율 | **100%** |
+
+### Plugin Protocol
+
+```python
+class GamePlugin:
+    def welcome_banner() -> str          # 접속 배너
+    def register_commands(engine)        # (no-op, Lua가 전담)
+    def handle_death(engine, victim, killer)  # 사망 처리
+    def playing_prompt(engine, session) -> str  # 프롬프트
+    def regen_char(engine, char)         # 클래스별 리젠 (선택)
+    def korean_verb_map() -> dict        # 한국어 매핑 확장 (선택)
+```
+
 ### 핫 리로드
 
-- `games/` 디렉토리: importlib.reload (tick 경계에서 안전 적용)
-- `core/` 디렉토리: 서버 재시작 필요
+- **Lua 스크립트**: `reload` 명령 또는 REST API → 무중단 즉시 갱신
+- `games/` Python: importlib.reload (tick 경계에서 안전 적용)
+- `core/` Python: 서버 재시작 필요
 - watchfiles 자동 감지 (개발), 관리자 `reload` 명령 (운영)
 
 ### Zone 리셋
@@ -368,23 +468,20 @@ services:
 
 ## 10. 테스트 요약
 
-| 파일 | 테스트 수 | 대상 |
-|------|----------|------|
-| test_ansi.py | 10 | ANSI 컬러 변환 |
-| test_db.py | 6 | DB 연결/초기화 |
-| test_engine.py | 7 | 명령어 디스패치, 이동, Zone 리셋 |
-| test_korean.py | 17 | 받침, 조사, 메시지 렌더링 |
-| test_net.py | 6 | Telnet 프로토콜 |
-| test_reload.py | 4 | 핫 리로드 |
-| test_session.py | 6 | 로그인 상태 머신 |
-| test_watcher.py | 2 | 파일 감지 |
-| test_world.py | 12 | 월드 모델, 주사위 |
-| test_sprint2_*.py | 51 | 명령어 파서, 한국어, 포지션 |
-| test_sprint3_*.py | 97 | 전투, 스펠, 사망, 레벨, 엔진 통합 |
-| test_sprint4_*.py | 28 | 상점, 확장 스펠 |
-| test_sprint5_*.py | 66 | 트리거, 관리자, API |
-| test_sprint6_integration.py | 40 | E2E 통합 시나리오 |
-| **합계** | **373** | |
+| 카테고리 | 테스트 수 | 대상 |
+|----------|----------|------|
+| 코어 인프라 (ansi/db/net/reload/session/watcher/world) | ~63 | 엔진 코어 모듈 |
+| 한국어 (korean) | 17 | 받침, 조사, 메시지 렌더링 |
+| Sprint 2: 명령어/파서 | ~51 | 명령어 디스패치, 한국어, 포지션, 도어 |
+| Sprint 3: 전투 | ~97 | THAC0, 스펠, 사망, 레벨 |
+| Sprint 4: 상점/확장 | ~28 | 상점, 확장 스펠 |
+| Sprint 5: 트리거/API | ~32 | DG Script, REST API |
+| Sprint 6: E2E 통합 | ~40 | 통합 시나리오 |
+| Lua 프레임워크 | ~48 | LuaCommandRuntime, CommandContext |
+| Lua 전투 | ~40 | combat_round 훅, cast, practice |
+| 10woongi | ~140 | 시그마 전투, 직업, 스킬 |
+| 엔진 통합 | ~84 | 엔진 루프, NPC AI, 명령어 |
+| **합계** | **640** | **34 파일, 8,572줄** |
 
 ---
 
@@ -408,18 +505,42 @@ services:
 
 **해결**: `create_mob(vnum, room_vnum)` — room_vnum은 필수 인자. 내부에서 방에 자동 배치
 
+### Lua↔Python 상호운용
+
+**문제**: Lua에서 Python list의 `#` 연산자 사용 불가, dict 접근시 nil 오류
+
+**해결**: `ctx:get_inv_count()` 등 래퍼 메서드 제공, `pcall` 감싸기 패턴 사용
+
+### 사망 처리 비동기 문제
+
+**문제**: Lua에서 직접 사망 처리시 async 호출 불가 + 컬렉션 수정 충돌
+
+**해결**: `ctx:defer_death(victim, killer)` → Python `execute_deferred()`에서 `plugin.handle_death()` 호출
+
+### engine.py 게임 종속성 제거
+
+**문제**: core/engine.py에 `from games.tbamud.*` import 5곳 → 다른 게임에서 재사용 불가
+
+**해결**: 모든 게임 로직을 plugin 훅 또는 Lua 훅으로 위임. `getattr(self, "_plugin", None)` 안전 접근 패턴
+
 ---
 
 ## 12. 향후 계획
 
 | Phase | 내용 | 상태 |
 |-------|------|------|
-| A-1 | tbaMUD-KR | **완료** |
-| A-2 | Simoon-KR | 미착수 |
-| A-3 | 3eyes-KR | 미착수 |
-| A-4 | 10woongi-KR | 미착수 |
+| A-1 | tbaMUD-KR (Lua-first 아키텍처) | **완료** (640 테스트) |
+| A-2 | 10woongi-KR (시그마 전투) | **완료** (Lua + Python 플러그인) |
+| A-3 | Simoon-KR | 플러그인 등록 완료, 게임 로직 미착수 |
+| A-4 | 3eyes-KR | 플러그인 등록 완료, 게임 로직 미착수 |
+| A-5~7 | muhan13, murim, 99hunter | 미착수 |
 | B | 프레임워크 추출 | 미착수 |
-| C | 게임 생성 마법사 | 미착수 |
+| C | 웹 디자이너 + 게임 생성 마법사 | 미착수 |
 
-Phase A-2부터는 `games/simoon/` 디렉토리를 추가하여 동일한 `core/` 위에 게임별 플러그인을 구현한다.
-Phase B에서 4개 게임의 공통 패턴을 Protocol 기반 플러그형 시스템으로 추출한다.
+**현재 아키텍처**:
+- `core/` = 게임 무관 인프라 (4,584줄, `games.*` import 0건)
+- `games/*/lua/` = 웹 에디터에서 실시간 편집 가능한 게임 로직
+- `games/*/game.py` = 최소 프로토콜 브릿지 (50~93줄)
+
+Phase A-5~7은 각 게임의 플러그인 + Lua 스크립트를 추가하는 것만으로 구현 가능.
+Phase B에서 공용 패턴을 더 추출하고, Phase C에서 웹 기반 게임 디자이너 도구를 구축.

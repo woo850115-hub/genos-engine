@@ -334,8 +334,8 @@ class CommandContext:
         items = [{"name": k, "cmd": v} for k, v in aliases.items()]
         return self._to_lua_table(items)
 
-    def set_alias(self, name: str, cmd: str) -> bool:
-        """Set a player alias. Returns False if max reached."""
+    def set_alias(self, name: str, cmd: Any = None) -> bool:
+        """Set a player alias. Pass cmd=None to delete. Returns False if max reached."""
         import json as _json
         aliases = self._session.player_data.get("aliases", {})
         if isinstance(aliases, str):
@@ -343,9 +343,12 @@ class CommandContext:
                 aliases = _json.loads(aliases)
             except (_json.JSONDecodeError, TypeError):
                 aliases = {}
-        if len(aliases) >= 20 and str(name) not in aliases:
-            return False
-        aliases[str(name)] = str(cmd)
+        if cmd is None:
+            aliases.pop(str(name), None)
+        else:
+            if len(aliases) >= 20 and str(name) not in aliases:
+                return False
+            aliases[str(name)] = str(cmd)
         self._session.player_data["aliases"] = aliases
         return True
 
@@ -453,6 +456,15 @@ class CommandContext:
         """Get a value from player_data dict."""
         return self._session.player_data.get(str(key))
 
+    def set_player_data(self, key: str, value: Any) -> None:
+        """Set a value in player_data dict."""
+        self._session.player_data[str(key)] = value
+
+    def set_player_data_on(self, target: Any, key: str, value: Any) -> None:
+        """Set a value in another character's player_data."""
+        if target and hasattr(target, "session") and target.session:
+            target.session.player_data[str(key)] = value
+
     def close_session(self) -> None:
         """Mark session as closed (for quit)."""
         self._session._closed = True
@@ -486,6 +498,22 @@ class CommandContext:
     def obj_to_room(self, obj: Any, room_vnum: int) -> None:
         if obj:
             self._engine.world.obj_to_room(obj, int(room_vnum))
+
+    def obj_from_obj(self, obj: Any) -> None:
+        """Remove object from its containing object."""
+        if not obj:
+            return
+        container = obj.in_obj
+        if container and obj in container.contains:
+            container.contains.remove(obj)
+        obj.in_obj = None
+
+    def obj_to_obj(self, obj: Any, container: Any) -> None:
+        """Put an object into a container."""
+        if not obj or not container:
+            return
+        obj.in_obj = container
+        container.contains.append(obj)
 
     def obj_from_room(self, obj: Any) -> None:
         """Remove object from room floor."""
@@ -537,6 +565,7 @@ class CommandContext:
             obj.worn_by = char
             obj.wear_slot = str(slot) if isinstance(slot, str) else str(slot)
             char.equipment[slot] = obj
+            self.recalc_equip()
 
     def unequip(self, slot: int | str) -> Any:
         char = self._session.character
@@ -547,7 +576,15 @@ class CommandContext:
             obj.worn_by = None
             obj.wear_slot = ""
             char.inventory.append(obj)
+        self.recalc_equip()
         return obj
+
+    def recalc_equip(self) -> None:
+        """Recalculate equipment bonuses for current character."""
+        from core.world import recalc_equip_bonuses
+        char = self._session.character if self._session else None
+        if char:
+            recalc_equip_bonuses(char)
 
     def apply_affect(self, target: Any, affect_id: int, duration: int, mods: Any = None) -> None:
         if target:
@@ -643,6 +680,9 @@ class CommandContext:
             if not target.fighting:
                 target.fighting = char
                 target.position = 7
+            # NPC memory: remember attacker
+            if target.is_npc and "memory" in target.proto.act_flags and char.player_id:
+                target.memory.add(char.player_id)
 
     def stop_combat(self, char: Any) -> None:
         if char:
@@ -680,6 +720,82 @@ class CommandContext:
     def particle(self, word: str, p1: str, p2: str) -> str:
         """Select Korean particle based on batchim."""
         return p1 if has_batchim(str(word)) else p2
+
+    def get_game_hour(self) -> int:
+        return self._engine.game_hour
+
+    def get_game_day(self) -> int:
+        return self._engine.game_day
+
+    def get_game_month(self) -> int:
+        return self._engine.game_month
+
+    def get_game_year(self) -> int:
+        return self._engine.game_year
+
+    def get_weather(self) -> str:
+        return self._engine.weather
+
+    # ── Follow / Group ─────────────────────────────────────────────
+
+    def follow(self, target: Any) -> None:
+        """Set current char to follow target."""
+        char = self._session.character
+        if not char or not target or char is target:
+            return
+        char._following = target
+        if not hasattr(target, "_followers"):
+            target._followers = set()
+        target._followers.add(char)
+
+    def unfollow(self) -> None:
+        """Stop following."""
+        char = self._session.character
+        if not char:
+            return
+        old = getattr(char, "_following", None)
+        if old:
+            char._following = None
+            if hasattr(old, "_followers"):
+                old._followers.discard(char)
+
+    def get_following(self) -> Any:
+        """Get who the current char is following."""
+        char = self._session.character
+        if not char:
+            return None
+        return getattr(char, "_following", None)
+
+    def get_followers(self) -> Any:
+        """Get followers of current char as Lua table."""
+        char = self._session.character
+        if not char:
+            return self._to_lua_table([])
+        followers = getattr(char, "_followers", set())
+        return self._to_lua_table(list(followers))
+
+    def get_all_skills(self) -> Any:
+        """Get all skills from world as Lua table of {id, name, korean_name}."""
+        result = []
+        for sid, sinfo in self._engine.world.skills.items():
+            entry = {
+                "id": int(sid),
+                "name": sinfo.get("name", f"스킬#{sid}"),
+                "korean_name": sinfo.get("korean_name", ""),
+            }
+            result.append(entry)
+        return self._to_lua_table(result)
+
+    def practice_skill(self, skill_id: int, gain: int) -> int:
+        """Practice a skill — increase proficiency. Returns new value."""
+        char = self._session.character
+        if not char:
+            return 0
+        sid = int(skill_id)
+        current = char.skills.get(sid, 0)
+        new_prof = min(85, current + int(gain))
+        char.skills[sid] = new_prof
+        return new_prof
 
     def log(self, msg: str) -> None:
         log.info("[Lua] %s", msg)
@@ -765,6 +881,11 @@ class CommandContext:
                 return info, mob
         return None, None
 
+    def defer_force(self, target: Any, cmd: str) -> None:
+        """Defer forcing a command on a target character."""
+        if target and target.session:
+            self._deferred.append(("force", (target.session, str(cmd))))
+
     def defer_reload(self) -> None:
         self._deferred.append(("reload", ()))
 
@@ -790,21 +911,13 @@ class CommandContext:
                     await handler(self._session, "")
             elif action == "death":
                 victim, killer = args
-                # Use plugin death handler if available
+                # Plugin MUST provide death handler
                 plugin = getattr(self._engine, "_plugin", None)
                 if plugin and hasattr(plugin, "handle_death"):
                     await plugin.handle_death(self._engine, victim, killer)
                 else:
-                    # Fallback: game-specific death handler + level up
-                    try:
-                        from games.tbamud.combat.death import handle_death
-                        from games.tbamud.level import check_level_up, do_level_up
-                        await handle_death(self._engine, victim, killer=killer)
-                        if killer and not killer.is_npc and check_level_up(killer):
-                            send_fn = killer.session.send_line if killer.session else None
-                            await do_level_up(killer, send_fn=send_fn)
-                    except ImportError:
-                        log.warning("No death handler available for deferred death")
+                    log.warning("No death handler plugin — victim %s dies without handler",
+                                getattr(victim, "name", "?"))
             elif action == "save":
                 await self._session.save_character()
             elif action == "reload":
@@ -821,6 +934,9 @@ class CommandContext:
             elif action == "shutdown":
                 if hasattr(self._engine, "shutdown"):
                     await self._engine.shutdown()
+            elif action == "force":
+                target_session, cmd_text = args
+                await self._engine.process_command(target_session, cmd_text)
             elif action == "close_conn":
                 await self._session.conn.close()
         self._deferred.clear()
@@ -977,13 +1093,15 @@ class LuaCommandRuntime:
         for cmd_name in self._commands:
             handler = self.wrap_command(cmd_name)
             if handler:
-                korean = None
-                # Check if this command has a Korean mapping
-                for kr, eng in self._korean_cmds.items():
-                    if eng == cmd_name:
-                        korean = kr
-                        break
-                self.engine.register_command(cmd_name, handler, korean=korean)
+                # Collect ALL Korean mappings for this command
+                kr_names = [kr for kr, eng in self._korean_cmds.items() if eng == cmd_name]
+                # Register with the first Korean name
+                self.engine.register_command(
+                    cmd_name, handler, korean=kr_names[0] if kr_names else None
+                )
+                # Register additional Korean names
+                for kr in kr_names[1:]:
+                    self.engine.cmd_korean[kr] = cmd_name
 
     # ── Hook dispatch ────────────────────────────────────────────
 

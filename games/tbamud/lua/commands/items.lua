@@ -170,22 +170,5 @@ register_command("remove", function(ctx, args)
     ctx:send("그런 것을 착용하고 있지 않습니다.")
 end, "벗")
 
--- ── give ────────────────────────────────────────────────────────
-
-register_command("give", function(ctx, args)
-    if not args or args == "" then
-        ctx:send("무엇을 누구에게 주시겠습니까?")
-        return
-    end
-    ctx:send("구현 예정입니다.")
-end, "줘")
-
--- ── put ─────────────────────────────────────────────────────────
-
-register_command("put", function(ctx, args)
-    if not args or args == "" then
-        ctx:send("무엇을 어디에 넣으시겠습니까?")
-        return
-    end
-    ctx:send("구현 예정입니다.")
-end, "넣")
+-- give/put are implemented in common/lua/commands/items.lua and inherited here.
+-- tbaMUD does not override them.

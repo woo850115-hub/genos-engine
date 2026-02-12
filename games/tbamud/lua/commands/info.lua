@@ -129,26 +129,288 @@ end
 -- ── time ────────────────────────────────────────────────────────
 
 register_command("time", function(ctx, args)
-    ctx:send("현재 시각을 알 수 없습니다. (구현 예정)")
+    local hour = ctx:get_game_hour()
+    local day = ctx:get_game_day()
+    local month = ctx:get_game_month()
+    local year = ctx:get_game_year()
+    local desc
+    if hour < 6 or hour >= 21 then desc = "밤"
+    elseif hour < 9 then desc = "새벽"
+    elseif hour < 12 then desc = "아침"
+    elseif hour < 17 then desc = "낮"
+    else desc = "저녁" end
+    ctx:send("현재 시간: " .. year .. "년 " .. month .. "월 " .. day .. "일 " ..
+             hour .. "시 (" .. desc .. ")")
 end, "시간")
 
 -- ── weather ─────────────────────────────────────────────────────
 
+local WEATHER_KR = {
+    sunny = "맑음 ☀", cloudy = "흐림 ☁",
+    rainy = "비 ☔", stormy = "폭풍 ⛈",
+}
+
 register_command("weather", function(ctx, args)
-    ctx:send("날씨는 맑습니다. (구현 예정)")
+    local w = ctx:get_weather()
+    local desc = WEATHER_KR[w] or w
+    ctx:send("현재 날씨: " .. desc)
 end, "날씨")
 
--- ── examine ─────────────────────────────────────────────────────
+-- ── prompt ──────────────────────────────────────────────────────
+
+register_command("prompt", function(ctx, args)
+    if not args or args == "" then
+        ctx:set_player_data("prompt", "")
+        ctx:send("프롬프트가 기본값으로 초기화되었습니다.")
+        return
+    end
+    local fmt = args
+    if fmt == "all" then
+        fmt = "< %h/%Hhp %m/%Mmn %v/%Vmv > "
+    end
+    ctx:set_player_data("prompt", fmt)
+    ctx:send("프롬프트가 설정되었습니다: " .. fmt)
+end, "프롬프트")
+
+-- ── toggle ──────────────────────────────────────────────────────
+
+local TOGGLE_OPTS = {
+    {key="autoloot", desc="자동 줍기"},
+    {key="autogold", desc="자동 골드"},
+    {key="autosplit", desc="자동 분배"},
+    {key="brief", desc="간략 모드"},
+    {key="compact", desc="압축 모드"},
+    {key="color", desc="컬러"},
+}
+
+register_command("toggle", function(ctx, args)
+    if not args or args == "" then
+        ctx:send("{bright_cyan}--- 설정 ---{reset}")
+        for _, opt in ipairs(TOGGLE_OPTS) do
+            local val = ctx:get_player_data("toggle_" .. opt.key)
+            local status
+            if val then
+                status = "{green}켜짐{reset}"
+            else
+                status = "{red}꺼짐{reset}"
+            end
+            ctx:send("  " .. string.format("%-10s", opt.desc) ..
+                     " (" .. string.format("%-10s", opt.key) .. "): " .. status)
+        end
+        return
+    end
+    local opt = args:lower()
+    local valid = false
+    for _, o in ipairs(TOGGLE_OPTS) do
+        if o.key == opt then valid = true; break end
+    end
+    if not valid then
+        local keys = {}
+        for _, o in ipairs(TOGGLE_OPTS) do table.insert(keys, o.key) end
+        ctx:send("사용 가능: " .. table.concat(keys, ", "))
+        return
+    end
+    local current = ctx:get_player_data("toggle_" .. opt)
+    if current then
+        ctx:set_player_data("toggle_" .. opt, false)
+        ctx:send(opt .. ": 꺼짐")
+    else
+        ctx:set_player_data("toggle_" .. opt, true)
+        ctx:send(opt .. ": 켜짐")
+    end
+end, "설정")
+
+-- ── practice ────────────────────────────────────────────────────
+
+local function proficiency_bar(prof)
+    local filled = math.floor(prof / 10)
+    local empty = 10 - filled
+    return "[" .. string.rep("#", filled) .. string.rep("-", empty) .. "]"
+end
+
+register_command("practice", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    local practices_left = ctx:get_player_data("practices") or 0
+
+    if not args or args == "" then
+        ctx:send("{bright_cyan}--- 스킬/주문 목록 ---{reset}")
+        local skills = ch.skills
+        if not skills then
+            ctx:send("  배운 스킬이 없습니다.")
+            ctx:send("\r\n연습 횟수: " .. practices_left .. "회 남음")
+            return
+        end
+        local found = false
+        local ok, pairs_fn = pcall(function() return pairs(skills) end)
+        if ok then
+            for sid, prof in pairs_fn do
+                local info = ctx:get_skill(tonumber(sid))
+                local name
+                if info then
+                    local ok2, n = pcall(function() return info.name end)
+                    name = ok2 and n or ("스킬#" .. tostring(sid))
+                else
+                    name = "스킬#" .. tostring(sid)
+                end
+                ctx:send("  " .. string.format("%-20s", name) .. " " ..
+                         proficiency_bar(prof) .. " (" .. prof .. "%)")
+                found = true
+            end
+        end
+        if not found then
+            ctx:send("  배운 스킬이 없습니다.")
+        end
+        ctx:send("\r\n연습 횟수: " .. practices_left .. "회 남음")
+        return
+    end
+
+    -- Practice a specific skill
+    if practices_left <= 0 then
+        ctx:send("연습 횟수가 없습니다. 레벨을 올려야 합니다.")
+        return
+    end
+
+    -- Check guildmaster in room
+    local chars = ctx:get_characters()
+    local has_teacher = false
+    for i = 1, #chars do
+        local mob = chars[i]
+        if mob.is_npc then
+            local flags = mob.proto.act_flags
+            local ok, len = pcall(function() return #flags end)
+            if ok then
+                for j = 0, len - 1 do
+                    local ok2, f = pcall(function() return flags[j] end)
+                    if ok2 and (f == "teacher" or f == "guildmaster") then
+                        has_teacher = true
+                        break
+                    end
+                end
+            end
+            if has_teacher then break end
+        end
+    end
+    if not has_teacher then
+        ctx:send("여기서는 연습할 수 없습니다. 길드마스터를 찾아가세요.")
+        return
+    end
+
+    local target = args:lower()
+    local all_skills = ctx:get_all_skills()
+    local found_id = nil
+    local found_name = ""
+    for i = 1, #all_skills do
+        local s = all_skills[i]
+        local sname = (s.name or ""):lower()
+        local skr = (s.korean_name or ""):lower()
+        if target == sname or target == skr or sname:find(target, 1, true) then
+            found_id = s.id
+            found_name = s.name
+            break
+        end
+    end
+
+    if not found_id then
+        ctx:send("그런 스킬을 찾을 수 없습니다.")
+        return
+    end
+
+    local current = ctx:get_skill_proficiency(ch, found_id)
+    if current >= 85 then
+        ctx:send("이미 충분히 숙련되어 있습니다. 실전에서 더 배우세요.")
+        return
+    end
+
+    local gain = ctx:random(10, 15)
+    local new_prof = ctx:practice_skill(found_id, gain)
+    ctx:set_player_data("practices", practices_left - 1)
+    ctx:send(found_name .. "을(를) 연습합니다. (" .. current .. "% → " .. new_prof .. "%)")
+end, "연습")
+
+-- ── examine — inspect item/mob with condition + container view ──
 
 register_command("examine", function(ctx, args)
     if not args or args == "" then
         ctx:send("무엇을 조사하시겠습니까?")
         return
     end
+    local ch = ctx.char
+    if not ch then return end
+
+    -- Check inventory first for items
+    local obj = ctx:find_obj_inv(args)
+    if not obj then
+        obj = ctx:find_obj_room(args)
+    end
+    if not obj then
+        obj = ctx:find_obj_equip(args)
+    end
+
+    if obj then
+        -- Show item info
+        ctx:send("{bright_cyan}" .. obj.proto.short_desc .. "{reset}")
+        if obj.proto.long_desc and obj.proto.long_desc ~= "" then
+            ctx:send(obj.proto.long_desc)
+        end
+        ctx:send("종류: " .. obj.proto.item_type .. "  무게: " .. tostring(obj.proto.weight) .. "  가치: " .. tostring(obj.proto.cost))
+
+        -- Show condition
+        local conditions = {"최상", "양호", "보통", "낡음", "파손"}
+        local cost = obj.proto.cost or 1
+        local cond_idx = 1
+        if cost < 10 then cond_idx = 4
+        elseif cost < 50 then cond_idx = 3
+        elseif cost < 200 then cond_idx = 2 end
+        ctx:send("상태: " .. conditions[cond_idx])
+
+        -- Show affects
+        local affects = obj.proto.affects
+        if affects then
+            local ok, len = pcall(function() return #affects end)
+            if ok and len > 0 then
+                for i = 0, len - 1 do
+                    local ok2, aff = pcall(function() return affects[i] end)
+                    if ok2 and aff then
+                        local ok3, loc = pcall(function() return aff.location end)
+                        local ok4, mod = pcall(function() return aff.modifier end)
+                        if ok3 and ok4 then
+                            local sign = mod > 0 and "+" or ""
+                            ctx:send("  " .. tostring(loc) .. " " .. sign .. tostring(mod))
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Container contents
+        if obj.proto.item_type == "container" then
+            local contents = obj.contains
+            if contents then
+                local ok, len = pcall(function() return #contents end)
+                if ok and len > 0 then
+                    ctx:send("{yellow}안에 들어있는 것:{reset}")
+                    for i = 0, len - 1 do
+                        local ok2, item = pcall(function() return contents[i] end)
+                        if ok2 and item then
+                            ctx:send("  " .. item.proto.short_desc)
+                        end
+                    end
+                else
+                    ctx:send("안에는 아무것도 없습니다.")
+                end
+            else
+                ctx:send("안에는 아무것도 없습니다.")
+            end
+        end
+        return
+    end
+
+    -- Not an item, try look at char/room
     ctx:call_command("look", args)
 end, "조사")
 
--- ── consider ────────────────────────────────────────────────────
+-- ── consider — with HP comparison ──────────────────────────────
 
 register_command("consider", function(ctx, args)
     if not args or args == "" then
@@ -165,21 +427,37 @@ register_command("consider", function(ctx, args)
     local diff = target.level - ch.level
     local msg
     if diff <= -10 then
-        msg = "이제 눈을 감고도 이길 수 있습니다."
+        msg = "{cyan}이제 눈을 감고도 이길 수 있습니다.{reset}"
     elseif diff <= -5 then
-        msg = "쉬운 상대입니다."
+        msg = "{green}쉬운 상대입니다.{reset}"
     elseif diff <= -2 then
-        msg = "어렵지 않은 상대입니다."
+        msg = "{green}어렵지 않은 상대입니다.{reset}"
     elseif diff <= 2 then
-        msg = "꽤 대등한 상대입니다."
+        msg = "{yellow}꽤 대등한 상대입니다.{reset}"
     elseif diff <= 5 then
-        msg = "조금 힘든 싸움이 될 것 같습니다."
+        msg = "{red}조금 힘든 싸움이 될 것 같습니다.{reset}"
     elseif diff <= 10 then
-        msg = "매우 위험한 상대입니다!"
+        msg = "{bright_red}매우 위험한 상대입니다!{reset}"
     else
-        msg = "자살 행위입니다!!!"
+        msg = "{bright_red}자살 행위입니다!!!{reset}"
     end
     ctx:send(msg)
+
+    -- HP comparison
+    local hp_ratio = target.hp / math.max(1, target.max_hp)
+    local hp_msg
+    if hp_ratio >= 1.0 then
+        hp_msg = "완벽한 상태입니다."
+    elseif hp_ratio >= 0.75 then
+        hp_msg = "약간의 상처가 있습니다."
+    elseif hp_ratio >= 0.50 then
+        hp_msg = "상당한 부상을 입고 있습니다."
+    elseif hp_ratio >= 0.25 then
+        hp_msg = "심각한 부상 상태입니다."
+    else
+        hp_msg = "거의 죽어가고 있습니다!"
+    end
+    ctx:send(target.name .. ": " .. hp_msg)
 end, "평가")
 
 -- ── where ───────────────────────────────────────────────────────
@@ -491,3 +769,73 @@ register_command("exits", function(ctx, args)
     end
     ctx:send(table.concat(lines, "\r\n"))
 end, "출구")
+
+-- ── affects — show active spell/skill effects ────────────────────
+
+local SPELL_NAMES = {
+    [1]="매직미사일", [2]="불꽃손", [3]="냉기의손길", [4]="번개",
+    [5]="화염구", [6]="색광선", [7]="가벼운치유", [8]="심각한치유",
+    [9]="치유", [10]="갑옷", [11]="축복", [12]="힘", [13]="투명",
+    [14]="보호막", [15]="실명", [16]="저주", [17]="독", [18]="수면",
+    [19]="투명감지", [20]="귀환", [21]="지진", [22]="사악퇴치",
+    [23]="선량퇴치", [24]="소환", [25]="물건탐지", [26]="매혹",
+    [27]="저주해제", [28]="해독", [29]="그룹치유", [30]="그룹갑옷",
+    [31]="적외선시야", [32]="수면보행", [33]="순간이동", [34]="무기강화",
+    [1001]="은신", [1002]="숨기",
+}
+
+register_command("affects", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+
+    local affects = ch.affects
+    if not affects then
+        ctx:send("활성 효과가 없습니다.")
+        return
+    end
+
+    local ok, len = pcall(function() return #affects end)
+    if not ok or len == 0 then
+        ctx:send("활성 효과가 없습니다.")
+        return
+    end
+
+    ctx:send("{bright_cyan}--- 활성 효과 ---{reset}")
+    local found = false
+    for i = 0, len - 1 do
+        local aok, aff = pcall(function() return affects[i] end)
+        if aok and aff then
+            local spell_id = aff.spell_id or aff.id or 0
+            local name = SPELL_NAMES[spell_id] or ("효과 #" .. tostring(spell_id))
+            local dur = aff.duration or 0
+            local detail = name .. " — " .. dur .. " 틱 남음"
+            if dur == -1 then
+                detail = name .. " — 영구"
+            end
+            ctx:send("  " .. detail)
+            found = true
+        end
+    end
+    if not found then
+        ctx:send("활성 효과가 없습니다.")
+    end
+end, "효과")
+
+-- ── levels — show experience table for current class ─────────────
+
+register_command("levels", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+
+    local cls = ch.class_id or 0
+    local tbl = EXP_TABLE[cls] or EXP_TABLE[0]
+    local cls_name = get_class_name(cls)
+
+    ctx:send("{bright_cyan}--- " .. cls_name .. " 경험치 표 ---{reset}")
+    for lv = 1, 31 do
+        local exp_needed = tbl[lv] or 0
+        local marker = ""
+        if lv == ch.level then marker = " {bright_yellow}<-- 현재{reset}" end
+        ctx:send(string.format("  레벨 %2d: %12s%s", lv, format_number(exp_needed), marker))
+    end
+end, "레벨표")

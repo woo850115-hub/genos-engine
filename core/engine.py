@@ -6,6 +6,7 @@ import asyncio
 import importlib
 import logging
 import os
+import random
 import signal
 import time
 from pathlib import Path
@@ -43,9 +44,9 @@ CHOSEONG_MAP: dict[str, str] = {
     "ㅊ": "착용", "ㅎ": "help",
 }
 
-# ── Korean verb → English action mapping (from korean_commands.lua) ──
+# ── Korean verb → English action mapping (default, extensible by plugin) ──
 
-KOREAN_VERB_MAP: dict[str, str] = {
+_DEFAULT_KOREAN_VERB_MAP: dict[str, str] = {
     "가": "go", "가져": "get", "건강": "score", "공격": "attack",
     "구원": "rescue", "구해": "rescue", "귓": "tell", "그만": "quit",
     "꺼내": "equipment", "날씨": "weather", "넣": "put", "놔": "drop",
@@ -62,10 +63,12 @@ KOREAN_VERB_MAP: dict[str, str] = {
     "주워": "get", "죽": "kill", "죽이": "kill", "줘": "give",
     "집": "get", "착용": "wear", "찾": "search", "챙기": "wield",
     "팔": "sell", "풀": "unlock", "피하": "flee", "학습": "practice",
-    # Extra common aliases
     "나가": "quit", "나가기": "quit", "소지품": "inventory", "장비": "equipment",
     "출구": "exits", "명령어": "commands", "점수": "score",
 }
+
+# Active verb map — merged from default + plugin at boot time
+KOREAN_VERB_MAP: dict[str, str] = dict(_DEFAULT_KOREAN_VERB_MAP)
 
 # Korean verb stem endings to strip for matching
 _VERB_ENDINGS = ["해줘", "해라", "하다", "하자", "하지", "해", "어", "아", "기"]
@@ -132,6 +135,13 @@ class Engine:
         self._watcher_task: asyncio.Task | None = None
         self.lua: LuaCommandRuntime | None = None
 
+        # Game time / weather
+        self.game_hour: int = 8       # 0-23 MUD hours
+        self.game_day: int = 1        # 1-35
+        self.game_month: int = 1      # 1-16
+        self.game_year: int = 650
+        self.weather: str = "sunny"   # sunny, cloudy, rainy, stormy
+
     # ── Boot sequence ────────────────────────────────────────────
 
     async def boot(self) -> None:
@@ -196,7 +206,17 @@ class Engine:
                  len(self.cmd_handlers), len(self.cmd_korean))
 
     def _load_korean_mappings(self) -> None:
-        """Load Korean → English command mappings from KOREAN_VERB_MAP."""
+        """Load Korean → English command mappings from verb map.
+
+        Merges default + plugin-provided Korean verb mappings.
+        """
+        # Let plugin extend the verb map
+        plugin = getattr(self, "_plugin", None)
+        if plugin and hasattr(plugin, "korean_verb_map"):
+            extra = plugin.korean_verb_map()
+            if extra:
+                KOREAN_VERB_MAP.update(extra)
+
         for kr_verb, eng_cmd in KOREAN_VERB_MAP.items():
             if eng_cmd in self.cmd_handlers and kr_verb not in self.cmd_korean:
                 self.cmd_korean[kr_verb] = eng_cmd
@@ -244,9 +264,15 @@ class Engine:
             if self._tick % combat_interval == 0:
                 await self._combat_round()
 
-            # Affect ticks (every 75 seconds ≈ 1 "MUD hour" at 10Hz)
+            # Game time + affect ticks (every 75 seconds ≈ 1 "MUD hour" at 10Hz)
             if self._tick % 750 == 0:
+                self._advance_game_time()
                 await self._tick_affects()
+                self._tick_corpse_decay()
+
+            # NPC AI (every 100 ticks = 10 seconds at 10Hz)
+            if self._tick % 100 == 0:
+                await self._mobile_activity()
 
             # Zone resets (every zone.lifespan minutes)
             if self._tick % 600 == 0:  # every minute at 10Hz
@@ -276,7 +302,11 @@ class Engine:
     # ── Combat round ─────────────────────────────────────────────
 
     async def _combat_round(self) -> None:
-        """Process one combat round for all fighting characters."""
+        """Process one combat round for all fighting characters.
+
+        Delegates to: plugin.combat_round > Lua hook > no-op.
+        All combat logic MUST be in Lua scripts (web-editable).
+        """
         # Plugin can override entire combat round
         plugin = getattr(self, "_plugin", None)
         if plugin and hasattr(plugin, "combat_round"):
@@ -289,46 +319,11 @@ class Engine:
             await self._lua_combat_round()
             return
 
-        from games.tbamud.combat.thac0 import perform_attack, extra_attacks
-        from games.tbamud.combat.death import handle_death
-        from games.tbamud.level import check_level_up, do_level_up
-
-        # Collect all fighting pairs
-        processed: set[int] = set()
+        # No combat system loaded — just clear stale fights
         for room in self.world.rooms.values():
             for char in list(room.characters):
-                if char.id in processed or not char.fighting:
-                    continue
-                if char.position < self.POS_FIGHTING:
+                if char.fighting and char.fighting.hp <= 0:
                     char.fighting = None
-                    continue
-                if char.fighting.hp <= 0:
-                    char.fighting = None
-                    continue
-
-                processed.add(char.id)
-                char.position = self.POS_FIGHTING
-                target = char.fighting
-
-                # Number of attacks this round
-                n_attacks = 1 + extra_attacks(char)
-                for _ in range(n_attacks):
-                    if target.hp <= 0:
-                        break
-                    await perform_attack(
-                        char, target,
-                        send_to_char=self._send_to_char,
-                    )
-
-                # Check death
-                if target.hp <= 0:
-                    char.fighting = None
-                    char.position = self.POS_STANDING
-                    await handle_death(self, target, killer=char)
-                    # Check level up
-                    if not char.is_npc and check_level_up(char):
-                        send_fn = char.session.send_line if char.session else None
-                        await do_level_up(char, send_fn=send_fn)
 
     async def _lua_combat_round(self) -> None:
         """Run combat round via Lua hook."""
@@ -353,28 +348,147 @@ class Engine:
                 await ctx.flush()
                 await ctx.execute_deferred()
 
+                # Wimpy auto-flee check (for player chars after taking damage)
+                if char.hp > 0 and char.fighting and char.wimpy > 0:
+                    if char.hp <= char.wimpy and char.session:
+                        await char.session.send_line(
+                            "{yellow}체력이 위험합니다! 자동으로 도망칩니다!{reset}"
+                        )
+                        # Trigger flee command
+                        flee_handler = self.cmd_handlers.get("flee")
+                        if flee_handler:
+                            await flee_handler(char.session, "")
+
     async def _send_to_char(self, char, message: str) -> None:
         """Send message to a character if they have a session."""
         if char.session:
             await char.session.send_line(message)
 
     async def _tick_affects(self) -> None:
-        """Tick down affects for all characters."""
+        """Tick down affects + natural HP/mana/move regeneration."""
         # Plugin can override affect ticking
         plugin = getattr(self, "_plugin", None)
         if plugin and hasattr(plugin, "tick_affects"):
             await plugin.tick_affects(self)
             return
 
-        from games.tbamud.combat.spells import tick_affects
-
         for room in self.world.rooms.values():
             for char in list(room.characters):
                 if char.affects:
-                    messages = tick_affects(char)
+                    messages = self._tick_char_affects(char)
                     if char.session:
                         for msg in messages:
                             await char.session.send_line(msg)
+
+                # Natural regeneration (every MUD hour)
+                if char.position >= self.POS_RESTING and not char.fighting:
+                    self._regen_char(char)
+
+    @staticmethod
+    def _tick_char_affects(char: Any) -> list[str]:
+        """Tick down affect durations. Returns expiry messages. Generic engine version."""
+        messages: list[str] = []
+        remaining = []
+        for affect in char.affects:
+            affect["duration"] = affect.get("duration", 0) - 1
+            if affect["duration"] <= 0:
+                name = affect.get("name", "")
+                if name:
+                    messages.append(f"{name} 효과가 사라졌습니다.")
+                else:
+                    spell_id = affect.get("spell_id", affect.get("id", 0))
+                    if spell_id:
+                        messages.append(f"효과 #{spell_id}이(가) 사라졌습니다.")
+            else:
+                # Poison damage tick
+                dmg = affect.get("damage_per_tick", 0)
+                if dmg and dmg > 0:
+                    char.hp -= dmg
+                    messages.append(f"{{green}}독이 퍼져 {dmg}의 피해를 입습니다!{{reset}}")
+                remaining.append(affect)
+        char.affects = remaining
+        return messages
+
+    def _regen_char(self, char: Any) -> None:
+        """Regenerate HP/mana/move based on position.
+
+        Default rates: standing=1x, resting=2x, sleeping=4x.
+        Plugin can override via regen_char(engine, char) hook.
+        """
+        # Plugin override
+        plugin = getattr(self, "_plugin", None)
+        if plugin and hasattr(plugin, "regen_char"):
+            plugin.regen_char(self, char)
+            return
+
+        lv = char.level
+        pos = char.position
+
+        # Position multiplier
+        if pos == self.POS_SLEEPING:
+            mult = 4
+        elif pos == self.POS_RESTING:
+            mult = 2
+        else:
+            mult = 1
+
+        # HP regen
+        base_hp = max(1, lv // 3 + 1) * mult
+        if char.hp < char.max_hp:
+            char.hp = min(char.max_hp, char.hp + base_hp)
+
+        # Mana regen (generic: all classes same rate)
+        base_mana = max(1, lv // 5 + 1) * mult
+        if char.mana < char.max_mana:
+            char.mana = min(char.max_mana, char.mana + base_mana)
+
+        # Move regen
+        base_move = max(1, lv // 4 + 1) * mult
+        if char.move < char.max_move:
+            char.move = min(char.max_move, char.move + base_move)
+
+    def _tick_corpse_decay(self) -> None:
+        """Tick down corpse timers and remove expired corpses."""
+        for room in self.world.rooms.values():
+            for obj in list(room.objects):
+                if obj.values.get("corpse"):
+                    timer = obj.values.get("timer", 0)
+                    if timer <= 1:
+                        # Corpse decays — drop contents to room
+                        for item in list(obj.contains):
+                            item.in_obj = None
+                            item.room_vnum = room.proto.vnum
+                            room.objects.append(item)
+                        obj.contains.clear()
+                        room.objects.remove(obj)
+                    else:
+                        obj.values["timer"] = timer - 1
+
+    # ── Game time / weather ──────────────────────────────────────
+
+    def _advance_game_time(self) -> None:
+        """Advance game clock by 1 MUD hour. Update weather."""
+        self.game_hour += 1
+        if self.game_hour >= 24:
+            self.game_hour = 0
+            self.game_day += 1
+            if self.game_day > 35:
+                self.game_day = 1
+                self.game_month += 1
+                if self.game_month > 16:
+                    self.game_month = 1
+                    self.game_year += 1
+
+        # Weather changes (~15% chance each MUD hour)
+        if random.random() < 0.15:
+            transitions = {
+                "sunny": ["sunny", "sunny", "cloudy"],
+                "cloudy": ["sunny", "cloudy", "rainy"],
+                "rainy": ["cloudy", "rainy", "stormy"],
+                "stormy": ["rainy", "stormy", "cloudy"],
+            }
+            choices = transitions.get(self.weather, ["sunny"])
+            self.weather = random.choice(choices)
 
     # ── Network callbacks ────────────────────────────────────────
 
@@ -404,6 +518,24 @@ class Engine:
         """
         if not text:
             return
+
+        # Position-based command restrictions
+        char = session.character
+        if char:
+            # Sleeping: only allow wake, quit
+            if char.position == self.POS_SLEEPING:
+                first = text.split()[0].lower()
+                wake_cmds = {"wake", "일어나", "quit", "나가기", "save", "저장"}
+                eng_first = self.cmd_korean.get(first, first)
+                if eng_first not in wake_cmds and first not in wake_cmds:
+                    await session.send_line("잠든 상태에서는 할 수 없습니다. 먼저 일어나세요.")
+                    return
+            # Fighting: restrict movement
+            if char.fighting:
+                first = text.split()[0].lower()
+                if (first in DIR_ABBREV or first in DIRS or first in DIR_NAMES_KR_MAP):
+                    await session.send_line("전투 중에는 이동할 수 없습니다! flee를 사용하세요.")
+                    return
 
         # 1. Alias expansion
         text = self._expand_alias(session, text)
@@ -616,27 +748,47 @@ class Engine:
                 await session.send_line("문이 닫혀있습니다.")
                 return
 
+        # Check sneak — if sneaking, suppress movement messages
+        is_sneaking = any(a.get("id") == 1001 for a in char.affects)
+
         # Leave message
-        leave_dir = DIR_NAMES_KR[dir_idx] if dir_idx < 6 else "어딘가"
-        for other in room.characters:
-            if other is char:
-                continue
-            if other.session:
-                await other.session.send_line(f"\r\n{char.name}이(가) {leave_dir}쪽으로 떠났습니다.")
+        if not is_sneaking:
+            leave_dir = DIR_NAMES_KR[dir_idx] if dir_idx < 6 else "어딘가"
+            for other in room.characters:
+                if other is char:
+                    continue
+                if other.session:
+                    await other.session.send_line(f"\r\n{char.name}이(가) {leave_dir}쪽으로 떠났습니다.")
 
         # Move
         self.world.char_to_room(char, exit_found.to_room)
 
         # Arrive message
-        arrive_dir = DIR_NAMES_KR[REVERSE_DIRS[dir_idx]] if dir_idx < 6 else "어딘가"
-        for other in dest.characters:
-            if other is char:
-                continue
-            if other.session:
-                await other.session.send_line(f"\r\n{char.name}이(가) {arrive_dir}쪽에서 왔습니다.")
+        if not is_sneaking:
+            arrive_dir = DIR_NAMES_KR[REVERSE_DIRS[dir_idx]] if dir_idx < 6 else "어딘가"
+            for other in dest.characters:
+                if other is char:
+                    continue
+                if other.session:
+                    await other.session.send_line(f"\r\n{char.name}이(가) {arrive_dir}쪽에서 왔습니다.")
 
         # Show room
         await self.do_look(session, "")
+
+        # Followers auto-follow
+        followers = getattr(char, "_followers", None)
+        if followers:
+            for follower in list(followers):
+                if follower.room_vnum != char.room_vnum:
+                    # Check follower is in the room we just left
+                    old_room = self.world.get_room(room.proto.vnum)
+                    if old_room and follower in old_room.characters:
+                        self.world.char_to_room(follower, exit_found.to_room)
+                        if follower.session:
+                            await follower.session.send_line(
+                                f"\r\n{char.name}을(를) 따라갑니다."
+                            )
+                            await self.do_look(follower.session, "")
 
     # ── Position constants ────────────────────────────────────────
 
@@ -654,120 +806,42 @@ class Engine:
     # ── Combat commands (tbaMUD-specific, Sprint 4 → Lua) ────────
 
     async def do_cast(self, session: Session, args: str) -> None:
-        """Cast a spell: cast <spell> [target]."""
-        from games.tbamud.combat.spells import (
-            find_spell, can_cast, cast_spell, SPELL_WORD_OF_RECALL,
-        )
-        from games.tbamud.combat.death import handle_death
-        from games.tbamud.level import check_level_up, do_level_up
-
-        char = session.character
-        if not char:
-            return
-        if char.position < self.POS_STANDING and char.position != self.POS_FIGHTING:
-            await session.send_line("일어서야 합니다.")
-            return
-
-        if not args:
-            await session.send_line("어떤 주문을 시전하시겠습니까?")
-            return
-
-        parts = args.split(None, 1)
-        spell_name = parts[0]
-        target_name = parts[1].strip() if len(parts) > 1 else ""
-
-        spell = find_spell(spell_name)
-        if not spell:
-            await session.send_line("그런 주문은 모릅니다.")
-            return
-
-        ok, msg = can_cast(char, spell.id)
-        if not ok:
-            await session.send_line(msg)
-            return
-
-        # Find target
-        room = self.world.get_room(char.room_vnum)
-        target = None
-
-        if spell.target_type in ("self", "utility"):
-            target = char
-        elif spell.target_type == "defensive" and not target_name:
-            target = char
-        elif target_name:
-            if room:
-                for mob in room.characters:
-                    kw = target_name.lower()
-                    if mob is not char and kw in mob.proto.keywords.lower():
-                        target = mob
-                        break
-                    if mob is not char and mob.player_name and kw in mob.player_name.lower():
-                        target = mob
-                        break
-            if target is None and spell.target_type == "defensive":
-                target = char
-        elif spell.target_type == "offensive":
-            target = char.fighting
-
-        if target is None:
-            await session.send_line("대상을 찾을 수 없습니다.")
-            return
-
-        # Word of Recall special
-        if spell.id == SPELL_WORD_OF_RECALL:
-            char.mana -= spell.mana_cost
-            start_room = self.config.get("world", {}).get("start_room", 3001)
-            if room and char in room.characters:
-                room.characters.remove(char)
-            char.room_vnum = start_room
-            dest = self.world.get_room(start_room)
-            if dest:
-                dest.characters.append(char)
-            char.fighting = None
-            await session.send_line("{bright_white}몸이 가벼워지며 순간이동합니다!{reset}")
-            await self.do_look(session, "")
-            return
-
-        # Start combat if offensive
-        if spell.target_type == "offensive" and target is not char:
-            if not char.fighting:
-                char.fighting = target
-                char.position = self.POS_FIGHTING
-            if not target.fighting:
-                target.fighting = char
-                target.position = self.POS_FIGHTING
-
-        damage = await cast_spell(
-            char, spell.id, target,
-            send_to_char=self._send_to_char,
-        )
-
-        # Check death
-        if target.hp <= 0 and target is not char:
-            char.fighting = None
-            char.position = self.POS_STANDING
-            await handle_death(self, target, killer=char)
-            if not char.is_npc and check_level_up(char):
-                await do_level_up(char, send_fn=session.send_line)
+        """Cast a spell — delegates to Lua 'cast' command."""
+        handler = self.cmd_handlers.get("cast")
+        if handler:
+            await handler(session, args or "")
+        else:
+            await session.send_line("주문 시스템이 로드되지 않았습니다.")
 
     async def do_practice(self, session: Session, args: str) -> None:
-        """Show or improve skills/spells."""
-        from games.tbamud.combat.spells import SPELLS
-
-        char = session.character
-        if not char:
-            return
-
-        await session.send_line("{bright_cyan}-- 시전 가능한 주문 --{reset}")
-        for spell in sorted(SPELLS.values(), key=lambda s: s.id):
-            min_lv = spell.min_level.get(char.class_id, 34)
-            if min_lv <= char.level:
-                prof = char.skills.get(spell.id, 0)
-                await session.send_line(
-                    f"  {spell.korean_name:<12s} ({spell.name:<20s}) 숙련도: {prof}%"
-                )
+        """Practice — delegates to Lua 'practice' command."""
+        handler = self.cmd_handlers.get("practice")
+        if handler:
+            await handler(session, args or "")
+        else:
+            await session.send_line("연습 시스템이 로드되지 않았습니다.")
 
     # ── Social commands ──────────────────────────────────────────
+
+    @staticmethod
+    def _subst_social(msg: str, actor: Any, target: Any = None) -> str:
+        """Substitute social message variables.
+
+        $n/$m/$e/$s → actor, $N/$M/$E/$S → target.
+        Korean: gender-neutral, so $m/$M → 그, $e/$E → 그, $s/$S → 그의.
+        """
+        if not msg:
+            return msg
+        msg = msg.replace("$n", actor.name)
+        msg = msg.replace("$m", "그")     # him/her (actor)
+        msg = msg.replace("$e", "그")     # he/she (actor)
+        msg = msg.replace("$s", "그의")   # his/her (actor)
+        if target:
+            msg = msg.replace("$N", target.name)
+            msg = msg.replace("$M", "그")     # him/her (target)
+            msg = msg.replace("$E", "그")     # he/she (target)
+            msg = msg.replace("$S", "그의")   # his/her (target)
+        return msg
 
     async def _do_social(self, session: Session, social_name: str, args: str) -> None:
         """Execute a social command from the socials DB table."""
@@ -782,16 +856,19 @@ class Engine:
         if not room:
             return
 
+        # Access messages dict (socials store messages in "messages" JSONB)
+        msgs = social.get("messages", social)
+
         target_name = args.strip() if args else ""
 
         if not target_name:
             # No target
-            msg_char = social.get("no_arg_to_char", "")
-            msg_room = social.get("no_arg_to_room", "")
+            msg_char = msgs.get("no_arg_to_char", "")
+            msg_room = msgs.get("no_arg_to_room", "")
             if msg_char:
-                await session.send_line(msg_char.replace("$n", char.name))
+                await session.send_line(self._subst_social(msg_char, char))
             if msg_room:
-                formatted = msg_room.replace("$n", char.name)
+                formatted = self._subst_social(msg_room, char)
                 for other in room.characters:
                     if other is not char and other.session:
                         await other.session.send_line(f"\r\n{formatted}")
@@ -808,44 +885,176 @@ class Engine:
                 break
 
         if target_mob is None:
-            not_found = social.get("not_found", "그런 사람을 찾을 수 없습니다.")
+            not_found = msgs.get("not_found", "그런 사람을 찾을 수 없습니다.")
             await session.send_line(not_found)
             return
 
         # Check self-target
         if target_mob is char:
-            msg_char = social.get("self_to_char", "")
-            msg_room = social.get("self_to_room", "")
+            msg_char = msgs.get("self_to_char", "")
+            msg_room = msgs.get("self_to_room", "")
             if msg_char:
-                await session.send_line(msg_char.replace("$n", char.name))
+                await session.send_line(self._subst_social(msg_char, char))
             if msg_room:
-                formatted = msg_room.replace("$n", char.name)
+                formatted = self._subst_social(msg_room, char)
                 for other in room.characters:
                     if other is not char and other.session:
                         await other.session.send_line(f"\r\n{formatted}")
             return
 
         # Found target
-        target_name_display = target_mob.name
-        msg_char = social.get("found_to_char", "")
-        msg_room = social.get("found_to_room", "")
-        msg_victim = social.get("found_to_victim", "")
+        msg_char = msgs.get("found_to_char", "")
+        msg_room = msgs.get("found_to_room", "")
+        msg_victim = msgs.get("found_to_victim", "")
 
         if msg_char:
-            await session.send_line(
-                msg_char.replace("$n", char.name).replace("$N", target_name_display)
-            )
+            await session.send_line(self._subst_social(msg_char, char, target_mob))
         if msg_victim and target_mob.session:
             await target_mob.session.send_line(
-                f"\r\n{msg_victim.replace('$n', char.name).replace('$N', target_name_display)}"
+                f"\r\n{self._subst_social(msg_victim, char, target_mob)}"
             )
         if msg_room:
-            formatted = msg_room.replace("$n", char.name).replace("$N", target_name_display)
+            formatted = self._subst_social(msg_room, char, target_mob)
             for other in room.characters:
                 if other is char or other is target_mob:
                     continue
                 if other.session:
                     await other.session.send_line(f"\r\n{formatted}")
+
+    # ── NPC AI (mobile_activity) ─────────────────────────────────
+
+    async def _mobile_activity(self) -> None:
+        """Process NPC autonomous behavior — scavenger, movement, aggro, memory, helper, wimpy."""
+        for room in list(self.world.rooms.values()):
+            for mob in list(room.characters):
+                if not mob.is_npc:
+                    continue
+                if mob.fighting:
+                    # Wimpy: flee at <20% HP
+                    if "wimpy" in mob.proto.act_flags and mob.hp < mob.max_hp // 5:
+                        await self._mob_flee(mob, room)
+                    continue
+                if mob.position < self.POS_STANDING:
+                    continue
+
+                # 1. Scavenger — pick up most valuable item in room
+                if "scavenger" in mob.proto.act_flags and room.objects:
+                    if random.random() < 0.10:
+                        best = max(room.objects, key=lambda o: o.proto.cost)
+                        room.objects.remove(best)
+                        best.room_vnum = None
+                        best.carried_by = mob
+                        mob.inventory.append(best)
+                        await self._act_room(room, f"{mob.name}이(가) {best.name}을(를) 주워 담습니다.", exclude=None)
+
+                # 2. Memory — attack remembered PCs
+                if "memory" in mob.proto.act_flags and mob.memory:
+                    found_enemy = None
+                    for ch in room.characters:
+                        if not ch.is_npc and ch.player_id in mob.memory:
+                            found_enemy = ch
+                            break
+                    if found_enemy:
+                        await self._act_room(room, f"'이봐! 날 공격한 놈이잖아!!!' {mob.name}이(가) 외칩니다.")
+                        self._start_npc_combat(mob, found_enemy)
+                        continue
+
+                # 3. Helper — assist fighting NPC ally
+                if "helper" in mob.proto.act_flags:
+                    for ally in room.characters:
+                        if ally is mob or not ally.is_npc:
+                            continue
+                        if ally.fighting and not ally.fighting.is_npc:
+                            await self._act_room(room, f"{mob.name}이(가) {ally.name}을(를) 돕기 위해 뛰어듭니다!")
+                            self._start_npc_combat(mob, ally.fighting)
+                            break
+                    if mob.fighting:
+                        continue
+
+                # 4. Aggressive — attack PCs in room
+                act_flags = mob.proto.act_flags
+                is_aggr = ("aggressive" in act_flags or "aggr_evil" in act_flags or
+                           "aggr_good" in act_flags or "aggr_neutral" in act_flags)
+                if is_aggr:
+                    victims = [ch for ch in room.characters if not ch.is_npc]
+                    if "wimpy" in act_flags:
+                        victims = [v for v in victims if v.position >= self.POS_STANDING and v.position != self.POS_SLEEPING]
+                    for victim in victims:
+                        if "aggr_evil" in act_flags and victim.alignment >= 0:
+                            continue
+                        if "aggr_good" in act_flags and victim.alignment <= 0:
+                            continue
+                        if "aggr_neutral" in act_flags and (victim.alignment < -350 or victim.alignment > 350):
+                            continue
+                        self._start_npc_combat(mob, victim)
+                        break
+                    if mob.fighting:
+                        continue
+
+                # 5. Movement — wander randomly
+                if "sentinel" not in mob.proto.act_flags:
+                    if random.randint(0, 18) < 6:
+                        await self._mob_wander(mob, room)
+
+    def _start_npc_combat(self, attacker: Any, victim: Any) -> None:
+        """Start combat between NPC attacker and victim."""
+        attacker.fighting = victim
+        attacker.position = self.POS_FIGHTING
+        if not victim.fighting:
+            victim.fighting = attacker
+            victim.position = self.POS_FIGHTING
+
+    async def _mob_wander(self, mob: Any, room: Any) -> None:
+        """Move NPC to a random adjacent room."""
+        exits = room.proto.exits
+        if not exits:
+            return
+        ex = random.choice(exits)
+        dest = self.world.get_room(ex.to_vnum)
+        if not dest:
+            return
+        # Check room flags
+        dest_flags = dest.proto.flags
+        if "nomob" in dest_flags or "death" in dest_flags:
+            return
+        # Check door
+        if room.has_door(ex.direction) and room.is_door_closed(ex.direction):
+            return
+        # Stay in zone check
+        if "stay_zone" in mob.proto.act_flags:
+            if dest.proto.zone_vnum != room.proto.zone_vnum:
+                return
+        # Move
+        self.world.char_to_room(mob, ex.to_vnum)
+
+    async def _mob_flee(self, mob: Any, room: Any) -> None:
+        """NPC flees from combat."""
+        exits = room.proto.exits
+        if not exits:
+            return
+        ex = random.choice(exits)
+        dest = self.world.get_room(ex.to_vnum)
+        if not dest:
+            return
+        if room.has_door(ex.direction) and room.is_door_closed(ex.direction):
+            return
+        # Stop combat
+        if mob.fighting:
+            if mob.fighting.fighting is mob:
+                mob.fighting.fighting = None
+                mob.fighting.position = self.POS_STANDING
+            mob.fighting = None
+            mob.position = self.POS_STANDING
+        await self._act_room(room, f"{mob.name}이(가) 도망갑니다!")
+        self.world.char_to_room(mob, ex.to_vnum)
+
+    async def _act_room(self, room: Any, msg: str, exclude: Any = None) -> None:
+        """Send a message to all players in a room (optionally excluding one)."""
+        for ch in room.characters:
+            if ch is exclude:
+                continue
+            if ch.session:
+                await ch.session.send_line(f"\r\n{msg}")
 
     # ── Zone resets ──────────────────────────────────────────────
 

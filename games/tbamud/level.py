@@ -103,12 +103,23 @@ async def do_level_up(char: MobInstance, send_fn=None) -> dict[str, int]:
 
     result = {"hp": hp_gain, "mana": mana_gain, "move": move_gain}
 
+    # Award practice sessions (INT/WIS based)
+    wis = char.stats.get("wis", 13)
+    prac_gain = max(1, wis // 5)
+    result["practices"] = prac_gain
+
+    # Update practice sessions in session player_data
+    if char.session:
+        pd = char.session.player_data
+        pd["practices"] = pd.get("practices", 0) + prac_gain
+
     if send_fn:
         class_name = CLASS_NAMES.get(char.class_id, "모험가")
         await send_fn(
             f"\r\n{{bright_yellow}}*** 레벨 업! ***{{reset}}\r\n"
             f"{{bright_cyan}}레벨 {char.level} {class_name}{{reset}}\r\n"
-            f"HP: +{hp_gain}  마나: +{mana_gain}  이동: +{move_gain}\r\n"
+            f"HP: +{hp_gain}  마나: +{mana_gain}  이동: +{move_gain}"
+            f"  연습: +{prac_gain}회\r\n"
         )
 
     return result

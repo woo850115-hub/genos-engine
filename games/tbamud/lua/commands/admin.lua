@@ -249,3 +249,144 @@ register_command("shutdown", function(ctx, args)
     ctx:send("{red}서버를 종료합니다...{reset}")
     ctx:defer_shutdown()
 end)
+
+-- ── force ──────────────────────────────────────────────────────
+
+register_command("force", function(ctx, args)
+    if not is_admin(ctx) then
+        ctx:send("권한이 없습니다.")
+        return
+    end
+    if not args or args == "" then
+        ctx:send("사용법: force <이름> <명령어>")
+        return
+    end
+    local parts = split(args)
+    if #parts < 2 then
+        ctx:send("사용법: force <이름> <명령어>")
+        return
+    end
+    local target_name = parts[1]
+    local cmd = args:match("^%S+%s+(.+)$")
+    local target = ctx:find_world_char(target_name)
+    if not target or not target.session then
+        ctx:send("온라인 플레이어를 찾을 수 없습니다.")
+        return
+    end
+    ctx:send(target.name .. "에게 '" .. cmd .. "'을(를) 강제합니다.")
+    ctx:send_to(target, "{red}" .. ctx.char.name .. "이(가) 당신에게 '" .. cmd .. "'을(를) 강제합니다.{reset}")
+    -- Defer actual command execution on target's session
+    ctx:defer_force(target, cmd)
+end)
+
+-- ── transfer ───────────────────────────────────────────────────
+
+register_command("transfer", function(ctx, args)
+    if not is_admin(ctx) then
+        ctx:send("권한이 없습니다.")
+        return
+    end
+    if not args or args == "" then
+        ctx:send("사용법: transfer <이름> [방번호]")
+        return
+    end
+    local parts = split(args)
+    local target_name = parts[1]
+    local target = ctx:find_world_char(target_name)
+    if not target then
+        ctx:send("플레이어를 찾을 수 없습니다.")
+        return
+    end
+    local dest = ctx.char.room_vnum
+    if #parts >= 2 then
+        dest = tonumber(parts[2]) or dest
+    end
+    ctx:move_char_to(target, dest)
+    ctx:send(target.name .. "을(를) 방 #" .. dest .. "(으)로 이동시켰습니다.")
+    if target.session then
+        ctx:send_to(target, "{bright_white}" .. ctx.char.name .. "이(가) 당신을 소환합니다!{reset}")
+    end
+end)
+
+-- ── page ──────────────────────────────────────────────────────
+
+register_command("page", function(ctx, args)
+    if not is_admin(ctx) then
+        ctx:send("권한이 없습니다.")
+        return
+    end
+    if not args or args == "" then
+        ctx:send("사용법: page <이름> [메시지]")
+        return
+    end
+    local parts = split(args)
+    local target_name = parts[1]
+    local message = args:match("^%S+%s+(.+)$") or "주의!"
+
+    if target_name:lower() == "all" or target_name == "모두" then
+        ctx:send_all("\r\n\007{bright_white}*** " .. ctx.char.name .. " → 전체: " .. message .. " ***{reset}")
+        ctx:send("전체에게 페이지를 보냈습니다.")
+        return
+    end
+
+    local target = ctx:find_world_char(target_name)
+    if not target or not target.session then
+        ctx:send("온라인 플레이어를 찾을 수 없습니다.")
+        return
+    end
+    ctx:send_to(target, "\r\n\007{bright_white}*** " .. ctx.char.name .. "이(가) 호출합니다: " .. message .. " ***{reset}")
+    ctx:send(target.name .. "에게 페이지를 보냈습니다.")
+end)
+
+-- ── freeze ────────────────────────────────────────────────────
+
+register_command("freeze", function(ctx, args)
+    if not is_admin(ctx) then
+        ctx:send("권한이 없습니다.")
+        return
+    end
+    if not args or args == "" then
+        ctx:send("사용법: freeze <이름>")
+        return
+    end
+    local target = ctx:find_world_char(args)
+    if not target then
+        ctx:send("플레이어를 찾을 수 없습니다.")
+        return
+    end
+    if target.session then
+        local frozen = ctx:get_player_data("frozen") or false
+        if frozen then
+            ctx:set_player_data_on(target, "frozen", false)
+            ctx:send(target.name .. "의 동결을 해제했습니다.")
+            ctx:send_to(target, "{green}동결이 해제되었습니다.{reset}")
+        else
+            ctx:set_player_data_on(target, "frozen", true)
+            ctx:send(target.name .. "을(를) 동결시켰습니다.")
+            ctx:send_to(target, "{red}동결되었습니다! 아무것도 할 수 없습니다.{reset}")
+        end
+    end
+end)
+
+-- ── mute ──────────────────────────────────────────────────────
+
+register_command("mute", function(ctx, args)
+    if not is_admin(ctx) then
+        ctx:send("권한이 없습니다.")
+        return
+    end
+    if not args or args == "" then
+        ctx:send("사용법: mute <이름>")
+        return
+    end
+    local target = ctx:find_world_char(args)
+    if not target then
+        ctx:send("플레이어를 찾을 수 없습니다.")
+        return
+    end
+    if target.session then
+        ctx:set_player_data_on(target, "muted", true)
+        ctx:send(target.name .. "을(를) 음소거시켰습니다.")
+        ctx:send_to(target, "{red}음소거되었습니다. 말을 할 수 없습니다.{reset}")
+    end
+end)

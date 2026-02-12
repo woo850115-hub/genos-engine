@@ -69,6 +69,10 @@ def _make_engine(world=None):
     eng.cmd_korean = {}
     eng._register_core_commands()
     eng.game_name = "10woongi"
+    # Set up plugin with death handler
+    import importlib
+    mod = importlib.import_module("games.10woongi.game")
+    eng._plugin = mod.create_plugin()
     _load_lua(eng)
     return eng
 

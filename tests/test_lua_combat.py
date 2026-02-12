@@ -61,6 +61,9 @@ def _make_engine(world=None):
     eng.cmd_korean = {}
     eng._register_core_commands()
     eng.game_name = "tbamud"
+    # Set up plugin with death handler
+    from games.tbamud.game import TbaMudPlugin
+    eng._plugin = TbaMudPlugin()
     _load_lua(eng)
     return eng
 

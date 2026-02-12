@@ -16,6 +16,40 @@ register_command("look", function(ctx, args)
     if args and args ~= "" then
         local target = args:lower()
 
+        -- "look in <container>"
+        local in_target = target:match("^in%s+(.+)$") or target:match("^안%s+(.+)$")
+        if in_target then
+            -- Search inventory, then room for container
+            local container = ctx:find_obj_inv(in_target)
+            if not container then container = ctx:find_obj_room(in_target) end
+            if container then
+                if container.proto.item_type == "container" then
+                    local contents = container.contains
+                    if contents then
+                        local ok, len = pcall(function() return #contents end)
+                        if ok and len > 0 then
+                            ctx:send("{yellow}" .. container.proto.short_desc .. " 안:{reset}")
+                            for ci = 0, len - 1 do
+                                local ok2, item = pcall(function() return contents[ci] end)
+                                if ok2 and item then
+                                    ctx:send("  " .. item.proto.short_desc)
+                                end
+                            end
+                        else
+                            ctx:send(container.proto.short_desc .. " 안에는 아무것도 없습니다.")
+                        end
+                    else
+                        ctx:send(container.proto.short_desc .. " 안에는 아무것도 없습니다.")
+                    end
+                else
+                    ctx:send("그것은 용기가 아닙니다.")
+                end
+            else
+                ctx:send("그런 것을 찾을 수 없습니다.")
+            end
+            return
+        end
+
         -- Check extra descs
         local eds = ctx:get_extra_descs()
         for i = 1, #eds do
@@ -31,16 +65,43 @@ register_command("look", function(ctx, args)
         for i = 1, #chars do
             local mob = chars[i]
             if mob ~= ch then
+                local is_match = false
                 if mob.proto.keywords:lower():find(target, 1, true) then
+                    is_match = true
+                end
+                if not is_match and mob.player_name and mob.player_name ~= "" and mob.player_name:lower():find(target, 1, true) then
+                    is_match = true
+                end
+                if is_match then
                     if mob.proto.detail_desc and mob.proto.detail_desc ~= "" then
                         ctx:send(mob.proto.detail_desc)
                     else
                         ctx:send(mob.name .. "을(를) 바라봅니다.")
                     end
-                    return
-                end
-                if mob.player_name and mob.player_name ~= "" and mob.player_name:lower():find(target, 1, true) then
-                    ctx:send(mob.name .. "을(를) 바라봅니다.")
+                    -- Show equipment of target
+                    if not mob.is_npc or mob.equipment then
+                        local equip = mob.equipment
+                        if equip then
+                            local has_items = false
+                            for slot, obj in pairs(equip) do
+                                if not has_items then
+                                    ctx:send("{cyan}" .. mob.name .. "의 장비:{reset}")
+                                    has_items = true
+                                end
+                                ctx:send("  <" .. tostring(slot) .. "> " .. obj.proto.short_desc)
+                            end
+                        end
+                    end
+                    -- Show condition
+                    local ratio = mob.hp / math.max(1, mob.max_hp)
+                    local condition
+                    if ratio >= 1.0 then condition = "완벽한 상태입니다."
+                    elseif ratio >= 0.75 then condition = "약간의 상처가 있습니다."
+                    elseif ratio >= 0.50 then condition = "상당한 부상을 입고 있습니다."
+                    elseif ratio >= 0.25 then condition = "심각한 부상 상태입니다."
+                    else condition = "거의 죽어가고 있습니다!"
+                    end
+                    ctx:send(mob.name .. ": " .. condition)
                     return
                 end
             end
@@ -72,7 +133,14 @@ register_command("look", function(ctx, args)
 
     -- Room display
     ctx:send("\r\n{cyan}" .. room.proto.name .. "{reset}")
-    if room.proto.description and room.proto.description ~= "" then
+    -- Brief mode: skip room description if already visited
+    local brief = ctx:get_player_data("toggles")
+    local is_brief = false
+    if brief then
+        local ok, val = pcall(function() return brief.brief end)
+        if ok and val then is_brief = true end
+    end
+    if not is_brief and room.proto.description and room.proto.description ~= "" then
         ctx:send("   " .. room.proto.description:gsub("%s+$", ""))
     end
 
@@ -107,10 +175,30 @@ register_command("look", function(ctx, args)
     for i = 1, #chars do
         local mob = chars[i]
         if mob ~= ch then
-            if mob.is_npc then
-                ctx:send("{bright_cyan}" .. mob.proto.long_desc:gsub("%s+$", "") .. "{reset}")
-            else
-                ctx:send(mob.name .. "이(가) 서 있습니다.")
+            -- Check if hidden (affect id 1002)
+            local hidden = false
+            local aff = mob.affects
+            if aff then
+                local aok, alen = pcall(function() return #aff end)
+                if aok then
+                    for ai = 0, alen - 1 do
+                        local ok2, a = pcall(function() return aff[ai] end)
+                        if ok2 and a then
+                            local ok3, aid = pcall(function() return a.id end)
+                            if ok3 and aid == 1002 then
+                                hidden = true
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            if not hidden then
+                if mob.is_npc then
+                    ctx:send("{bright_cyan}" .. mob.proto.long_desc:gsub("%s+$", "") .. "{reset}")
+                else
+                    ctx:send(mob.name .. "이(가) 서 있습니다.")
+                end
             end
         end
     end
@@ -307,6 +395,65 @@ register_command("alias", function(ctx, args)
 end, "별칭")
 
 -- ── say ──────────────────────────────────────────────────────────
+
+-- ── junk — destroy an item immediately ──────────────────────────
+register_command("junk", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    if not args or args == "" then
+        ctx:send("무엇을 폐기하시겠습니까?")
+        return
+    end
+    local obj = ctx:find_obj_inv(args)
+    if not obj then
+        ctx:send("그런 것을 갖고 있지 않습니다.")
+        return
+    end
+    ctx:obj_from_char(obj)
+    ctx:send(obj.name .. "을(를) 폐기했습니다.")
+end, "폐기")
+
+-- ── donate — donate item to donation room ───────────────────────
+register_command("donate", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    if not args or args == "" then
+        ctx:send("무엇을 기부하시겠습니까?")
+        return
+    end
+    local obj = ctx:find_obj_inv(args)
+    if not obj then
+        ctx:send("그런 것을 갖고 있지 않습니다.")
+        return
+    end
+    ctx:obj_from_char(obj)
+    -- Place in donation room (vnum 3003, tbaMUD default)
+    ctx:obj_to_room(obj, 3003)
+    ctx:send(obj.name .. "을(를) 기부했습니다.")
+    ctx:send_all("{cyan}" .. ch.name .. "이(가) " .. obj.name .. "을(를) 기부합니다.{reset}")
+end, "기부")
+
+-- ── unalias ─────────────────────────────────────────────────────
+register_command("unalias", function(ctx, args)
+    if not args or args == "" then
+        ctx:send("사용법: unalias <이름>")
+        return
+    end
+    local aliases = ctx:get_aliases()
+    local found = false
+    for i = 1, #aliases do
+        if aliases[i].name == args then
+            found = true
+            break
+        end
+    end
+    if not found then
+        ctx:send("'" .. args .. "' 별칭이 없습니다.")
+        return
+    end
+    ctx:set_alias(args, nil)
+    ctx:send("별칭 '" .. args .. "'이(가) 삭제되었습니다.")
+end)
 
 register_command("say", function(ctx, args)
     if not args or args == "" then

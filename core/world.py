@@ -212,6 +212,7 @@ class MobInstance:
     stats: dict[str, int] = field(default_factory=dict)    # dynamic stats
     flags: list[str] = field(default_factory=list)
     extensions: dict[str, Any] = field(default_factory=dict)
+    memory: set[int] = field(default_factory=set)  # remembered attacker player_ids
     # For players
     player_id: int | None = None
     player_name: str = ""
@@ -222,6 +223,7 @@ class MobInstance:
     armor_class: int = 100
     alignment: int = 0
     sex: int = 0
+    wimpy: int = 0  # auto-flee HP threshold
 
     @property
     def is_npc(self) -> bool:
@@ -626,6 +628,41 @@ class World:
         room = self.rooms.get(mob.room_vnum)
         if room and mob in room.characters:
             room.characters.remove(mob)
+
+
+# ── Equipment stat recalculation ─────────────────────────────────
+
+
+def recalc_equip_bonuses(char: MobInstance) -> None:
+    """Recalculate combat stats from equipped item affects.
+
+    Resets hitroll/damroll/armor_class to proto base values,
+    then sums all item affects.
+
+    Item affects format: [{"location": "hitroll", "modifier": 2}, ...]
+    """
+    proto = char.proto
+    char.hitroll = proto.hitroll
+    char.damroll = proto.damroll
+    char.armor_class = proto.armor_class
+
+    for obj in char.equipment.values():
+        for aff in obj.proto.affects:
+            loc = aff.get("location", "").lower()
+            mod = aff.get("modifier", 0)
+            if not isinstance(mod, (int, float)):
+                continue
+            mod = int(mod)
+            if loc in ("hitroll", "hit"):
+                char.hitroll += mod
+            elif loc in ("damroll", "damage", "dam"):
+                char.damroll += mod
+            elif loc in ("armor", "ac", "armor_class"):
+                char.armor_class += mod
+            elif loc in ("hp", "max_hp"):
+                char.max_hp = max(1, proto.max_hp + mod)
+            elif loc in ("mana", "max_mana"):
+                char.max_mana = max(0, proto.max_mana + mod)
 
 
 # ── Utility functions ────────────────────────────────────────────

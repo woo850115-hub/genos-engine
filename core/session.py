@@ -88,11 +88,23 @@ class Session:
 
     async def enter_game(self) -> None:
         """Transition from login to playing state."""
+        import json as _json
         pd = self.player_data
         start_room = pd.get("room_vnum", self.config.get("world", {}).get("start_room", 3001))
 
+        # Parse JSONB fields if they come as strings
+        saved_skills = pd.get("skills", {})
+        if isinstance(saved_skills, str):
+            saved_skills = _json.loads(saved_skills) if saved_skills else {}
+        saved_stats = pd.get("stats", {})
+        if isinstance(saved_stats, str):
+            saved_stats = _json.loads(saved_stats) if saved_stats else {}
+        saved_affects = pd.get("affects", [])
+        if isinstance(saved_affects, str):
+            saved_affects = _json.loads(saved_affects) if saved_affects else []
+
         # Create MobInstance for player
-        from core.world import MobProto
+        from core.world import MobProto, recalc_equip_bonuses
         dummy_proto = MobProto(
             vnum=-1, keywords=pd["name"], short_desc=pd["name"],
             long_desc=f"{pd['name']}이(가) 서 있습니다.",
@@ -111,11 +123,45 @@ class Session:
         char = MobInstance(
             id=_next_id(), proto=dummy_proto, room_vnum=start_room,
             hp=pd.get("hp", 20), max_hp=pd.get("max_hp", 20),
-            mana=pd.get("mana", 100), gold=pd.get("gold", 0),
+            mana=pd.get("mana", 100), max_mana=pd.get("max_mana", 100),
+            move=pd.get("move", 100), max_move=pd.get("max_move", 100),
+            gold=pd.get("gold", 0),
+            experience=pd.get("experience", 0),
+            class_id=pd.get("class_id", 0),
+            alignment=pd.get("alignment", 0),
+            sex=pd.get("sex", 0),
             player_id=pd.get("id"), player_name=pd["name"],
+            player_level=pd.get("level", 1),
             session=self,
+            skills=saved_skills,
+            stats=saved_stats,
+            affects=saved_affects,
         )
         self.character = char
+
+        # Restore equipment from saved data
+        saved_equip = pd.get("equipment", {})
+        if isinstance(saved_equip, str):
+            saved_equip = _json.loads(saved_equip) if saved_equip else {}
+        for slot, vnum in saved_equip.items():
+            obj = self.world.create_obj(int(vnum))
+            if obj:
+                obj.worn_by = char
+                obj.wear_slot = slot
+                char.equipment[slot] = obj
+
+        # Restore inventory from saved data
+        saved_inv = pd.get("inventory", [])
+        if isinstance(saved_inv, str):
+            saved_inv = _json.loads(saved_inv) if saved_inv else []
+        for vnum in saved_inv:
+            obj = self.world.create_obj(int(vnum))
+            if obj:
+                obj.carried_by = char
+                char.inventory.append(obj)
+
+        # Recalculate equipment bonuses
+        recalc_equip_bonuses(char)
 
         # Place character in room
         self.world.char_to_room(char, start_room)
@@ -141,14 +187,35 @@ class Session:
         self._closed = True
 
     async def save_character(self) -> None:
-        """Save character state to DB."""
+        """Save full character state to DB."""
         if not self.character or not self.character.player_id:
             return
         c = self.character
+        # Serialize equipment: {slot: vnum}
+        equip_data = {}
+        for slot, obj in c.equipment.items():
+            equip_data[str(slot)] = obj.proto.vnum
+        # Serialize inventory: [vnum, ...]
+        inv_data = [obj.proto.vnum for obj in c.inventory]
         data = {
             "hp": c.hp, "max_hp": c.max_hp,
-            "mana": c.mana, "room_vnum": c.room_vnum,
+            "mana": c.mana, "max_mana": c.max_mana,
+            "move": c.move, "max_move": c.max_move,
+            "room_vnum": c.room_vnum,
             "gold": c.gold,
+            "level": c.player_level,
+            "experience": c.experience,
+            "class_id": c.class_id,
+            "alignment": c.alignment,
+            "armor_class": c.armor_class,
+            "skills": c.skills,
+            "equipment": equip_data,
+            "inventory": inv_data,
+            "affects": c.affects,
+            "stats": c.stats,
+            "practices": self.player_data.get("practices", 0),
+            "toggles": self.player_data.get("toggles", {}),
+            "prompt": self.player_data.get("prompt", ""),
         }
         await self.db.save_player(c.player_id, data)
 
@@ -289,6 +356,28 @@ class SelectClassState:
             session.player_data["class_id"] = class_id
             start_room = session.config.get("world", {}).get("start_room", 3001)
 
+            # Roll initial stats (4d6 drop lowest)
+            import random as _rng
+            def roll_stat() -> int:
+                rolls = sorted([_rng.randint(1, 6) for _ in range(4)])
+                return sum(rolls[1:])  # drop lowest
+
+            stats = {
+                "str": roll_stat(), "dex": roll_stat(), "con": roll_stat(),
+                "int": roll_stat(), "wis": roll_stat(), "cha": roll_stat(),
+            }
+            # Class-based stat emphasis
+            bonuses = {0: "int", 1: "wis", 2: "dex", 3: "str"}
+            if class_id in bonuses:
+                key = bonuses[class_id]
+                stats[key] = min(18, stats[key] + 2)
+
+            # Initial HP/mana by class
+            hp_table = {0: 12, 1: 14, 2: 14, 3: 18}
+            mana_table = {0: 100, 1: 80, 2: 50, 3: 30}
+            initial_hp = hp_table.get(class_id, 14)
+            initial_mana = mana_table.get(class_id, 50)
+
             # Create player in DB
             row = await session.db.create_player(
                 name=session.player_data["name"],
@@ -298,8 +387,18 @@ class SelectClassState:
                 start_room=start_room,
             )
             session.player_data = dict(row)
+            session.player_data["stats"] = stats
+            session.player_data["hp"] = initial_hp
+            session.player_data["max_hp"] = initial_hp
+            session.player_data["mana"] = initial_mana
+            session.player_data["max_mana"] = initial_mana
+            session.player_data["practices"] = 5  # starting practice sessions
 
             await session.send_line(f"\r\n{session.player_data['name']} 캐릭터가 생성되었습니다!")
+            await session.send_line(
+                f"스탯: 힘 {stats['str']} 민첩 {stats['dex']} 체력 {stats['con']} "
+                f"지능 {stats['int']} 지혜 {stats['wis']} 매력 {stats['cha']}"
+            )
             await session.enter_game()
             return session.state
 

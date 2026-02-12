@@ -1,4 +1,8 @@
-"""tbaMUD-KR Game Plugin — command registration and game-specific setup."""
+"""tbaMUD-KR Game Plugin — minimal plugin protocol only.
+
+All game commands are implemented in Lua scripts (games/tbamud/lua/).
+This file only contains plugin protocol methods required by the engine.
+"""
 
 from __future__ import annotations
 
@@ -28,14 +32,8 @@ class TbaMudPlugin:
             )
 
     def register_commands(self, engine: Engine) -> None:
-        """All tbaMUD commands are now provided by Lua scripts.
-
-        Lua scripts in games/tbamud/lua/commands/ are loaded by the engine's
-        Lua runtime after this method is called, overriding common commands
-        with tbaMUD-specific implementations.
-        """
+        """All commands are registered via Lua scripts — nothing to do here."""
         pass
-
 
     async def handle_death(self, engine: Engine, victim: Any, killer: Any = None) -> None:
         """Delegate to tbaMUD death handler (called by deferred death)."""
@@ -47,13 +45,36 @@ class TbaMudPlugin:
             await do_level_up(killer, send_fn=send_fn)
 
     def playing_prompt(self, session: Any) -> str:
-        """tbaMUD-style prompt: < 20hp 100mn 82mv >"""
+        """tbaMUD-style prompt with custom format support."""
         c = session.character
-        return (
+        custom_fmt = session.player_data.get("prompt", "") if session.player_data else ""
+        if custom_fmt:
+            result = custom_fmt
+            result = result.replace("%h", str(c.hp)).replace("%H", str(c.max_hp))
+            result = result.replace("%m", str(c.mana)).replace("%M", str(c.max_mana))
+            result = result.replace("%v", str(c.move)).replace("%V", str(c.max_move))
+            result = result.replace("%g", str(c.gold))
+            result = result.replace("%x", str(c.experience))
+            return f"\n{result}"
+        base = (
             f"\n< {{green}}{c.hp}{{reset}}/{{green}}{c.max_hp}hp{{reset}} "
             f"{{cyan}}{c.mana}{{reset}}/{{cyan}}{c.max_mana}mn{{reset}} "
             f"{{yellow}}{c.move}{{reset}}/{{yellow}}{c.max_move}mv{{reset}} > "
         )
+        # Combat prompt: show enemy condition
+        if c.fighting and c.fighting.hp > 0:
+            enemy = c.fighting
+            ratio = enemy.hp / max(1, enemy.max_hp)
+            if ratio >= 0.75:
+                condition = "{green}양호{reset}"
+            elif ratio >= 0.50:
+                condition = "{yellow}부상{reset}"
+            elif ratio >= 0.25:
+                condition = "{red}심각{reset}"
+            else:
+                condition = "{bright_red}빈사{reset}"
+            base += f"\n[{enemy.name}: {condition}] "
+        return base
 
 
 def create_plugin() -> TbaMudPlugin:
