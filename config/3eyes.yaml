@@ -1,0 +1,33 @@
+game: 3eyes
+name: "검제3의 검눈 (3eyes)"
+
+network:
+  telnet_host: "0.0.0.0"
+  telnet_port: 4003
+  api_host: "0.0.0.0"
+  api_port: 8083
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "genos"
+  password: "genos"
+  database: "genos_3eyes"
+  min_connections: 2
+  max_connections: 10
+
+world:
+  start_room: 1
+  void_room: 0
+
+engine:
+  tick_rate: 10
+  save_interval: 300
+  max_players: 100
+  combat_round: 20
+  shutdown_timeout: 30
+
+dev:
+  hot_reload: true
+  debug: true
+  log_level: "DEBUG"

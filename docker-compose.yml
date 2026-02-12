@@ -56,5 +56,45 @@ services:
       - ./data:/app/data
       - ./config:/app/config
 
+  simoon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      GAME: simoon
+      DB_HOST: postgres
+    ports:
+      - "4002:4002"
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./core:/app/core
+      - ./games:/app/games
+      - ./data:/app/data
+      - ./config:/app/config
+
+  3eyes:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      GAME: 3eyes
+      DB_HOST: postgres
+    ports:
+      - "4003:4003"
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./core:/app/core
+      - ./games:/app/games
+      - ./data:/app/data
+      - ./config:/app/config
+
 volumes:
   pgdata:
