@@ -31,6 +31,74 @@ register_command("shout", function(ctx, args)
     ctx:send_all("\r\n{yellow}" .. ch.name .. "이(가) 외칩니다: '" .. args .. "'{reset}")
 end, "외치")
 
+register_command("gossip", function(ctx, args)
+    if not args or args == "" then
+        ctx:send("무엇을 잡담하시겠습니까?")
+        return
+    end
+    local ch = ctx.char
+    ctx:send("{yellow}[잡담] 당신: " .. args .. "{reset}")
+    local players = ctx:get_players()
+    if players then
+        for i = 0, 100 do
+            local ok, p = pcall(function() return players[i] end)
+            if not ok or not p then break end
+            if p ~= ctx.session then
+                ctx:send_to_session(p, "\r\n{yellow}[잡담] " .. ch.name .. ": " .. args .. "{reset}")
+            end
+        end
+    end
+end, "잡담")
+
+register_command("follow", function(ctx, args)
+    if not args or args == "" then
+        local following = ctx:get_following()
+        if following then
+            ctx:unfollow()
+            ctx:send("더 이상 아무도 따라가지 않습니다.")
+        else
+            ctx:send("누구를 따라가시겠습니까?")
+        end
+        return
+    end
+    if args == "self" or args == "나" then
+        ctx:unfollow()
+        ctx:send("더 이상 아무도 따라가지 않습니다.")
+        return
+    end
+    local target = ctx:find_char(args)
+    if not target then
+        ctx:send("그런 사람을 찾을 수 없습니다.")
+        return
+    end
+    if target == ctx.char then
+        ctx:unfollow()
+        ctx:send("더 이상 아무도 따라가지 않습니다.")
+        return
+    end
+    ctx:follow(target)
+    ctx:send(target.name .. "을(를) 따라갑니다.")
+end, "따라가")
+
+register_command("group", function(ctx, args)
+    local ch = ctx.char
+    local followers = ctx:get_followers()
+    local lines = {"{cyan}[ " .. ch.name .. "의 무리 ]{reset}"}
+    table.insert(lines, "  " .. ch.name ..
+        " — 체력:" .. ch.hp .. "/" .. ch.max_hp ..
+        " 내력:" .. (ch.move or 0) .. "/" .. (ch.max_move or 0))
+    if followers then
+        for i = 0, 50 do
+            local ok, f = pcall(function() return followers[i] end)
+            if not ok or not f then break end
+            table.insert(lines, "  " .. f.name ..
+                " — 체력:" .. f.hp .. "/" .. f.max_hp ..
+                " 내력:" .. (f.move or 0) .. "/" .. (f.max_move or 0))
+        end
+    end
+    ctx:send(table.concat(lines, "\r\n"))
+end, "무리")
+
 register_command("whisper", function(ctx, args)
     if not args or args == "" then
         ctx:send("누구에게 무엇을 속삭이시겠습니까?")
