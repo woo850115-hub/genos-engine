@@ -250,3 +250,244 @@ register_command("혈운무검술", function(ctx, args)
     ctx:send("{bright_white}집중력을 높입니다! 명중률 +" .. acc_bonus .. "{reset}")
     ctx:send_room(ch.name .. "이(가) 집중력을 높입니다!")
 end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 직업전환 (change_class) — 기본 직업 변경 (특수 방+비용)
+-- 원본: kyk3.c change_class() — 전직방(RTRAIN) + 레벨50+ + 비용
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("직업전환", function(ctx, args)
+    if not te_room_has_flag(ctx, 8) then  -- RTRAIN
+        ctx:send("{yellow}여기에서는 직업전환을 할 수 없습니다.{reset}")
+        return
+    end
+    if not args or args == "" then
+        ctx:send("사용법: 직업전환 <직업번호>")
+        ctx:send("  1=암살자 2=야만인 3=성직자 4=전사 5=마법사 6=팔라딘 7=광전사 8=도적")
+        return
+    end
+    local ch = ctx.char
+    local cls = ch.class_id or CLASS_FIGHTER
+    if cls >= CLASS_INVINCIBLE then
+        ctx:send("{yellow}전직 캐릭터는 직업전환이 불가합니다.{reset}")
+        return
+    end
+    if ch.level < 50 then
+        ctx:send("{yellow}50레벨 이상이어야 직업전환을 할 수 있습니다.{reset}")
+        return
+    end
+    local new_cls = tonumber(args)
+    if not new_cls or new_cls < 1 or new_cls > 8 then
+        ctx:send("유효한 직업 번호를 입력하세요. (1-8)")
+        return
+    end
+    if new_cls == cls then
+        ctx:send("이미 해당 직업입니다.")
+        return
+    end
+    local cost = 200000
+    if ch.gold < cost then
+        ctx:send("{yellow}직업전환에 " .. cost .. "원이 필요합니다.{reset}")
+        return
+    end
+    ch.gold = ch.gold - cost
+    ch.class_id = new_cls
+    local class_name = THREEEYES_CLASSES[new_cls] or "?"
+    ctx:send("{bright_yellow}직업이 " .. class_name .. "(으)로 전환되었습니다!{reset}")
+    ctx:send_all("{bright_yellow}" .. ch.name .. "이(가) " .. class_name .. "(으)로 직업전환합니다!{reset}")
+end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 향상 (buy_states) — 골드로 스탯 포인트 구매
+-- 원본: kyk3.c buy_states()
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("향상", function(ctx, args)
+    if not args or args == "" then
+        ctx:send("사용법: 향상 <str|dex|con|int|pie>")
+        return
+    end
+    local ch = ctx.char
+    local stat_name = args:lower()
+    local valid = {str=true, dex=true, con=true, int=true, pie=true}
+    if not valid[stat_name] then
+        ctx:send("유효한 스탯: str, dex, con, int, pie")
+        return
+    end
+    local current = te_stat(ch, stat_name, 13)
+    if current >= 25 then
+        ctx:send("{yellow}이미 최대치에 도달했습니다. (25){reset}")
+        return
+    end
+    local cost = current * current * 1000
+    if ch.gold < cost then
+        ctx:send("{yellow}향상에 " .. cost .. "원이 필요합니다. (현재: " .. ch.gold .. "원){reset}")
+        return
+    end
+    ch.gold = ch.gold - cost
+    local new_val = current + 1
+    pcall(function()
+        if not ch.stats then ch.stats = {} end
+        ch.stats[stat_name] = new_val
+    end)
+    local kr_names = {str="힘", dex="민첩", con="체력", int="지능", pie="신앙"}
+    ctx:send("{bright_green}" .. (kr_names[stat_name] or stat_name) .. "이(가) " ..
+        new_val .. "(으)로 향상되었습니다! (-" .. cost .. "원){reset}")
+end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 혈도봉쇄 (magic_stop) — 마법 사용 봉인
+-- 원본: kyk8.c magic_stop()
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("혈도봉쇄", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    if not args or args == "" then
+        ctx:send("누구의 마법을 봉쇄하시겠습니까?")
+        return
+    end
+    local cls = ch.class_id or CLASS_FIGHTER
+    if cls < CLASS_INVINCIBLE then
+        ctx:send("{yellow}무적자 이상만 사용할 수 있습니다.{reset}")
+        return
+    end
+    if ch.mana < 50 then
+        ctx:send("마력이 부족합니다.")
+        return
+    end
+    local target = ctx:find_char(args)
+    if not target then
+        ctx:send("여기에 그런 사람은 없습니다.")
+        return
+    end
+    if target == ch then
+        ctx:send("자기 자신에게는 사용할 수 없습니다.")
+        return
+    end
+    ch.mana = ch.mana - 50
+    -- Apply silence effect (PSILNC flag)
+    pcall(function()
+        local flags = target.flags or {}
+        local found = false
+        for _, f in ipairs(flags) do
+            if f == PSILNC then found = true; break end
+        end
+        if not found then flags[#flags + 1] = PSILNC end
+        target.flags = flags
+    end)
+    ctx:send("{bright_red}" .. target.name .. "의 마법을 봉쇄합니다!{reset}")
+    ctx:send_to(target, "{bright_red}" .. ch.name .. "이(가) 당신의 마법을 봉쇄합니다!{reset}")
+    ctx:send_room(ch.name .. "이(가) " .. target.name .. "의 마법을 봉쇄합니다!")
+end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 흡성대법 (absorb) — MP 흡수 공격, Invincible+ 전용
+-- 원본: kyk8.c absorb()
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("흡성대법", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    local cls = ch.class_id or CLASS_FIGHTER
+    if cls < CLASS_INVINCIBLE then
+        ctx:send("{yellow}무적자 이상만 사용할 수 있습니다.{reset}")
+        return
+    end
+    local target = ch.fighting
+    if not target then
+        if not args or args == "" then
+            ctx:send("누구에게 사용하시겠습니까?")
+            return
+        end
+        target = ctx:find_char(args)
+    end
+    if not target then
+        ctx:send("여기에 그런 것은 없군요")
+        return
+    end
+    local cd = ctx:check_cooldown(21)
+    if cd > 0 then
+        ctx:send("{yellow}아직 사용할 수 없습니다. (" .. cd .. "초){reset}")
+        return
+    end
+    local absorb_amt = math.floor(ch.level * 2 + te_stat(ch, "int", 13) * 3)
+    local actual = math.min(absorb_amt, target.mana or 0)
+    target.mana = math.max(0, (target.mana or 0) - actual)
+    ch.mana = math.min(ch.max_mana, ch.mana + actual)
+    ctx:set_cooldown(21, 30)
+    ctx:send("{bright_cyan}흡성대법! " .. target.name .. "에게서 MP " .. actual .. " 흡수!{reset}")
+    ctx:send_to(target, "{bright_red}" .. ch.name .. "이(가) 당신의 마력을 흡수합니다!{reset}")
+    if not ch.fighting then ctx:start_combat(target) end
+end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 경공술 (haste) — 이동/공격속도 자기 버프
+-- 원본: kyk8.c haste_self()
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("경공술", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    if ch.mana < 30 then
+        ctx:send("마력이 부족합니다.")
+        return
+    end
+    local cd = ctx:check_cooldown(22)
+    if cd > 0 then
+        ctx:send("{yellow}아직 사용할 수 없습니다. (" .. cd .. "초){reset}")
+        return
+    end
+    ch.mana = ch.mana - 30
+    -- Apply haste flag
+    pcall(function()
+        local flags = ch.flags or {}
+        local found = false
+        for _, f in ipairs(flags) do
+            if f == PHASTE then found = true; break end
+        end
+        if not found then flags[#flags + 1] = PHASTE end
+        ch.flags = flags
+    end)
+    ctx:set_cooldown(22, 120)
+    ctx:send("{bright_cyan}경공술! 몸이 가벼워집니다!{reset}")
+    ctx:send_room(ch.name .. "이(가) 경공술을 사용합니다!")
+end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 신원법 (pray) — Cleric/Paladin HP 회복
+-- 원본: kyk8.c pray()
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("신원법", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    local cls = ch.class_id or CLASS_FIGHTER
+    if cls ~= 3 and cls ~= 6 then
+        ctx:send("성직자나 팔라딘만 신원법을 사용할 수 있습니다.")
+        return
+    end
+    if ch.mana < 25 then
+        ctx:send("마력이 부족합니다.")
+        return
+    end
+    local cd = ctx:check_cooldown(23)
+    if cd > 0 then
+        ctx:send("{yellow}아직 사용할 수 없습니다. (" .. cd .. "초){reset}")
+        return
+    end
+    ch.mana = ch.mana - 25
+    local pie = te_stat(ch, "pie", 13)
+    local heal = math.floor(pie * 3 + ch.level * 2)
+    ch.hp = math.min(ch.max_hp, ch.hp + heal)
+    ctx:set_cooldown(23, 45)
+    ctx:send("{bright_green}신원법! HP +" .. heal ..
+        " (" .. ch.hp .. "/" .. ch.max_hp .. "){reset}")
+    ctx:send_room(ch.name .. "이(가) 기도합니다.")
+end)

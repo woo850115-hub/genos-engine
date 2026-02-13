@@ -252,3 +252,100 @@ register_command("글삭제", function(ctx, args)
     table.remove(posts, post_num)
     ctx:send("{green}" .. board.name .. "의 글 #" .. post_num .. "을(를) 삭제했습니다.{reset}")
 end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 편지 시스템 (mail) — player_data.mailbox
+-- ══════════════════════════════════════════════════════════════════
+
+local MAX_MAIL = 30
+
+-- ── 편지보내기 (postsend) ────────────────────────────────────────
+register_command("편지보내기", function(ctx, args)
+    if not args or args == "" then
+        ctx:send("사용법: 편지보내기 <대상> <제목> <내용>")
+        return
+    end
+    local target_name, title, body = args:match("^(%S+)%s+(%S+)%s+(.+)$")
+    if not target_name then
+        target_name, title = args:match("^(%S+)%s+(.+)$")
+        body = ""
+    end
+    if not target_name or not title then
+        ctx:send("사용법: 편지보내기 <대상> <제목> [내용]")
+        return
+    end
+    -- 편지 저장: global mailbox table (runtime)
+    _G._3eyes_mailbox = _G._3eyes_mailbox or {}
+    local box = _G._3eyes_mailbox[target_name] or {}
+    if #box >= MAX_MAIL then
+        ctx:send("{yellow}대상의 우편함이 가득 찼습니다.{reset}")
+        return
+    end
+    box[#box + 1] = {
+        from = ctx.char.name,
+        title = title,
+        body = body or "",
+        time = os.time(),
+    }
+    _G._3eyes_mailbox[target_name] = box
+    ctx:send("{green}" .. target_name .. "에게 편지를 보냈습니다. [" .. title .. "]{reset}")
+    -- 상대방 접속 중이면 알림
+    local target = ctx:find_player(target_name)
+    if target and target.session then
+        ctx:send_to(target, "{bright_yellow}" .. ctx.char.name .. "에게서 편지가 도착했습니다!{reset}")
+    end
+end)
+
+-- ── 편지받기 (postread) ──────────────────────────────────────────
+register_command("편지받기", function(ctx, args)
+    _G._3eyes_mailbox = _G._3eyes_mailbox or {}
+    local name = ctx.char.name
+    local box = _G._3eyes_mailbox[name] or {}
+    if #box == 0 then
+        ctx:send("편지가 없습니다.")
+        return
+    end
+    local num = tonumber(args)
+    if not num then
+        -- 목록 표시
+        local lines = {"{bright_cyan}━━━━━━ 편지함 ━━━━━━{reset}"}
+        for i, mail in ipairs(box) do
+            lines[#lines + 1] = string.format("  %2d) [%s] %s", i, mail.from, mail.title)
+        end
+        lines[#lines + 1] = "{bright_cyan}━━━━━━━━━━━━━━━━━━━━{reset}"
+        lines[#lines + 1] = "읽기: 편지받기 <번호>"
+        ctx:send(table.concat(lines, "\r\n"))
+        return
+    end
+    if num < 1 or num > #box then
+        ctx:send("그런 번호의 편지는 없습니다. (1-" .. #box .. ")")
+        return
+    end
+    local mail = box[num]
+    ctx:send("{bright_cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}")
+    ctx:send("  보낸이: " .. mail.from)
+    ctx:send("  제목: {bright_white}" .. mail.title .. "{reset}")
+    ctx:send("{bright_cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}")
+    ctx:send(mail.body or "")
+    ctx:send("{bright_cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}")
+end)
+
+-- ── 편지삭제 (postdelete) ────────────────────────────────────────
+register_command("편지삭제", function(ctx, args)
+    _G._3eyes_mailbox = _G._3eyes_mailbox or {}
+    local name = ctx.char.name
+    local box = _G._3eyes_mailbox[name] or {}
+    if #box == 0 then
+        ctx:send("편지가 없습니다.")
+        return
+    end
+    local num = tonumber(args)
+    if not num or num < 1 or num > #box then
+        ctx:send("사용법: 편지삭제 <번호> (1-" .. #box .. ")")
+        return
+    end
+    table.remove(box, num)
+    _G._3eyes_mailbox[name] = box
+    ctx:send("{green}편지 #" .. num .. "을(를) 삭제했습니다.{reset}")
+end)

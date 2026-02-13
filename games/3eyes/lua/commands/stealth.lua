@@ -87,6 +87,48 @@ register_command("훔쳐", function(ctx, args)
     end
 end)
 
+-- ── 엿봐 (peek) — 대상 인벤토리 훔쳐보기 ─────────────────────
+register_command("엿봐", function(ctx, args)
+    if not args or args == "" then
+        ctx:send("누구를 엿보시겠습니까?")
+        return
+    end
+    local ch = ctx.char
+    if ch.class_id ~= 1 and ch.class_id ~= 8 then
+        ctx:send("암살자나 도적만 엿볼 수 있습니다.")
+        return
+    end
+    local target = ctx:find_char(args)
+    if not target then
+        ctx:send("그런 사람을 찾을 수 없습니다.")
+        return
+    end
+    if target == ch then
+        ctx:send("자기 자신을 엿볼 필요는 없습니다.")
+        return
+    end
+    local dex = te_stat(ch, "dex", 13)
+    local chance = 30 + dex * 2 + ch.level - target.level
+    if math.random(1, 100) > chance then
+        ctx:send("실패! " .. target.name .. "이(가) 당신의 시선을 느꼈습니다.")
+        ctx:send_to(target, ch.name .. "이(가) 당신을 엿보려 합니다!")
+        return
+    end
+    -- 성공: 대상 인벤토리 표시
+    local lines = {"{bright_cyan}━━ " .. target.name .. "의 소지품 ━━{reset}"}
+    local inv = ctx:get_char_inventory(target)
+    if inv and #inv > 0 then
+        for i = 1, #inv do
+            lines[#lines + 1] = "  " .. inv[i].name
+        end
+    else
+        lines[#lines + 1] = "  아무것도 가지고 있지 않습니다."
+    end
+    lines[#lines + 1] = string.format("  소지금: {yellow}%d{reset}원", target.gold or 0)
+    lines[#lines + 1] = "{bright_cyan}━━━━━━━━━━━━━━━━━━━━━━━━{reset}"
+    ctx:send(table.concat(lines, "\r\n"))
+end)
+
 -- ── 기습 (cmdno=45, backstab) ─────────────────────────────────
 register_command("기습", function(ctx, args)
     if not args or args == "" then

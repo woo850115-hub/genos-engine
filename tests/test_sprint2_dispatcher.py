@@ -127,21 +127,29 @@ class TestKoreanVerbMap:
 class TestChoseong:
     def test_map_exists(self):
         assert "ㄱ" in CHOSEONG_MAP
-        assert "ㅂ" in CHOSEONG_MAP
+        assert "ㅈ" in CHOSEONG_MAP
 
     def test_choseong_resolves(self):
         assert CHOSEONG_MAP["ㄱ"] == "공격"
-        assert CHOSEONG_MAP["ㅂ"] == "봐"
-        assert CHOSEONG_MAP["ㄷ"] == "도움"
+        assert CHOSEONG_MAP["ㅈ"] == "저장"
+
+    def test_direction_choseong_in_dir_map(self):
+        """Direction choseong shortcuts are in DIR_NAMES_KR_MAP, not CHOSEONG_MAP."""
+        assert "ㅂ" in DIR_NAMES_KR_MAP  # 북
+        assert "ㄷ" in DIR_NAMES_KR_MAP  # 동
+        assert "ㄴ" in DIR_NAMES_KR_MAP  # 남
+        assert "ㅅ" in DIR_NAMES_KR_MAP  # 서
+        assert "ㅇ" in DIR_NAMES_KR_MAP  # 위
+        assert "ㅁ" in DIR_NAMES_KR_MAP  # 아래
 
     @pytest.mark.asyncio
     async def test_choseong_dispatch(self):
         eng, session = _make_engine_and_session()
-        # ㅂ → 봐 → look
-        await eng.process_command(session, "ㅂ")
+        # ㄱ → 공격 → needs target
+        await eng.process_command(session, "ㄱ")
         calls = [str(c) for c in session.send_line.call_args_list]
-        found_room = any("신전" in c for c in calls)
-        assert found_room
+        found = any("공격" in c or "누구" in c for c in calls)
+        assert found
 
 
 # ── Direction map extended ───────────────────────────────────────

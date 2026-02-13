@@ -893,3 +893,332 @@ register_command("*접속자", function(ctx, args)
     lines[#lines + 1] = "{bright_cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}"
     ctx:send(table.concat(lines, "\r\n"))
 end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- DM 한국어 별칭 — 원본 cmdlist 미등록 한글명 등록
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("*방번호", function(ctx, args) ctx:call_command("*스탯", args or "") end)
+register_command("*세이브", function(ctx, args) ctx:call_command("*월드저장", args or "") end)
+register_command("*창조", function(ctx, args) ctx:call_command("*지급", args or "") end)
+register_command("*영원", function(ctx, args) ctx:call_command("*설정", args or "") end)
+register_command("*청소", function(ctx, args) ctx:call_command("*제거", args or "") end)
+register_command("*방어력", function(ctx, args) ctx:call_command("*스탯", args or "") end)
+register_command("*users", function(ctx, args) ctx:call_command("*접속자", args or "") end)
+register_command("*말", function(ctx, args) ctx:call_command("*에코", args or "") end)
+register_command("*올에코", function(ctx, args) ctx:call_command("*전체에코", args or "") end)
+register_command("*잡아", function(ctx, args) ctx:call_command("*소환", args or "") end)
+register_command("*이동", function(ctx, args) ctx:call_command("*순간이동", args or "") end)
+register_command("*고", function(ctx, args) ctx:call_command("*순간이동", args or "") end)
+register_command("*가져", function(ctx, args) ctx:call_command("*소환", args or "") end)
+register_command("*줘", function(ctx, args) ctx:call_command("*지급", args or "") end)
+register_command("*없애", function(ctx, args) ctx:call_command("*제거", args or "") end)
+register_command("*치", function(ctx, args) ctx:call_command("*치료", args or "") end)
+register_command("*힐", function(ctx, args) ctx:call_command("*치료", args or "") end)
+register_command("*올치료", function(ctx, args) ctx:call_command("*회복", args or "") end)
+register_command("*승격", function(ctx, args) ctx:call_command("*승급", args or "") end)
+register_command("*올림", function(ctx, args) ctx:call_command("*승급", args or "") end)
+register_command("*내림", function(ctx, args) ctx:call_command("*승급", args or "") end)
+register_command("*냉", function(ctx, args) ctx:call_command("*냉동", args or "") end)
+register_command("*녹여", function(ctx, args) ctx:call_command("*냉동", args or "") end)  -- toggle
+register_command("*입막", function(ctx, args) ctx:call_command("*침묵", args or "") end)
+register_command("*벙어리", function(ctx, args) ctx:call_command("*침묵", args or "") end)
+register_command("*강퇴", function(ctx, args) ctx:call_command("*밴", args or "") end)
+register_command("*보내", function(ctx, args) ctx:call_command("*원격", args or "") end)
+register_command("*리셋", function(ctx, args) ctx:call_command("*존리셋", args or "") end)
+register_command("*죽여", function(ctx, args) ctx:call_command("*처형", args or "") end)
+register_command("*킬", function(ctx, args) ctx:call_command("*처형", args or "") end)
+register_command("*셧다운", function(ctx, args) ctx:call_command("*종료", args or "") end)
+register_command("*엿봐", function(ctx, args) ctx:call_command("*엿보기", args or "") end)
+register_command("*투명모드", function(ctx, args) ctx:call_command("*투명", args or "") end)
+register_command("*안투명", function(ctx, args) ctx:call_command("*투명해제", args or "") end)
+register_command("*평화모드", function(ctx, args) ctx:call_command("*평화", args or "") end)
+register_command("*셋", function(ctx, args) ctx:call_command("*설정", args or "") end)
+register_command("*로딩", function(ctx, args) ctx:call_command("*로드", args or "") end)
+register_command("*뉴스", function(ctx, args) ctx:call_command("*공지", args or "") end)
+register_command("*reload", function(ctx, args) ctx:call_command("*리로드", args or "") end)
+register_command("*save", function(ctx, args) ctx:call_command("*월드저장", args or "") end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 신규 DM 명령어 — 원본에 존재하나 미구현이었던 관리 기능
+-- ══════════════════════════════════════════════════════════════════
+
+-- *방제작 — 새 방 생성
+register_command("*방제작", function(ctx, args)
+    if not is_dm(ctx, CLASS_REALZONEMAKER) then dm_deny(ctx); return end
+    if not args or args == "" then
+        ctx:send("사용법: *방제작 <방번호>")
+        return
+    end
+    local vnum = tonumber(args)
+    if not vnum then
+        ctx:send("유효한 방 번호를 입력하세요.")
+        return
+    end
+    local ok = ctx:create_room(vnum)
+    if ok then
+        ctx:send("{green}방 #" .. vnum .. "이(가) 생성되었습니다.{reset}")
+    else
+        ctx:send("{yellow}방을 생성할 수 없습니다. (이미 존재?){reset}")
+    end
+end)
+
+-- *방이름 — 방 이름 변경
+register_command("*방이름", function(ctx, args)
+    if not is_dm(ctx, CLASS_REALZONEMAKER) then dm_deny(ctx); return end
+    if not args or args == "" then
+        ctx:send("사용법: *방이름 <새이름>")
+        return
+    end
+    local ok = ctx:set_room_name(args)
+    if ok then
+        ctx:send("{green}방 이름이 '" .. args .. "'(으)로 변경되었습니다.{reset}")
+    else
+        ctx:send("{yellow}방 이름을 변경할 수 없습니다.{reset}")
+    end
+end)
+
+-- *방삭제 — 방 삭제
+register_command("*방삭제", function(ctx, args)
+    if not is_dm(ctx, CLASS_DM) then dm_deny(ctx); return end
+    if not args or args == "" then
+        ctx:send("사용법: *방삭제 <방번호>")
+        return
+    end
+    local vnum = tonumber(args)
+    if not vnum then
+        ctx:send("유효한 방 번호를 입력하세요.")
+        return
+    end
+    local ok = ctx:delete_room(vnum)
+    if ok then
+        ctx:send("{green}방 #" .. vnum .. "이(가) 삭제되었습니다.{reset}")
+    else
+        ctx:send("{yellow}방을 삭제할 수 없습니다.{reset}")
+    end
+end)
+
+-- *방설명 — 방 설명 변경
+register_command("*방설명", function(ctx, args)
+    if not is_dm(ctx, CLASS_REALZONEMAKER) then dm_deny(ctx); return end
+    if not args or args == "" then
+        ctx:send("사용법: *방설명 <설명>")
+        return
+    end
+    local ok = ctx:set_room_desc(args)
+    if ok then
+        ctx:send("{green}방 설명이 변경되었습니다.{reset}")
+    else
+        ctx:send("{yellow}방 설명을 변경할 수 없습니다.{reset}")
+    end
+end)
+
+-- *dm_방설명저장 — 방 설명 저장
+register_command("*dm_방설명저장", function(ctx, args)
+    if not is_dm(ctx, CLASS_REALZONEMAKER) then dm_deny(ctx); return end
+    ctx:save_room_desc()
+    ctx:send("{green}방 설명이 저장되었습니다.{reset}")
+end)
+
+-- *물건이름 — 아이템 이름 변경
+register_command("*물건이름", function(ctx, args)
+    if not is_dm(ctx, CLASS_REALZONEMAKER) then dm_deny(ctx); return end
+    if not args or args == "" then
+        ctx:send("사용법: *물건이름 <아이템> <새이름>")
+        return
+    end
+    local item_kw, new_name = args:match("^(%S+)%s+(.+)$")
+    if not item_kw then
+        ctx:send("사용법: *물건이름 <아이템> <새이름>")
+        return
+    end
+    local item = ctx:find_inv_item(item_kw)
+    if not item then
+        ctx:send("그런 물건을 가지고 있지 않습니다.")
+        return
+    end
+    local old = item.name
+    item.name = new_name
+    ctx:send("{green}" .. old .. " → " .. new_name .. "{reset}")
+end)
+
+-- *괴물 — 몹 생성
+register_command("*괴물", function(ctx, args)
+    if not is_dm(ctx, CLASS_REALZONEMAKER) then dm_deny(ctx); return end
+    if not args or args == "" then
+        ctx:send("사용법: *괴물 <몹번호>")
+        return
+    end
+    local vnum = tonumber(args)
+    if not vnum then
+        ctx:send("유효한 몹 번호를 입력하세요.")
+        return
+    end
+    local ok = ctx:create_mob(vnum)
+    if ok then
+        ctx:send("{green}몹 #" .. vnum .. "이(가) 생성되었습니다.{reset}")
+    else
+        ctx:send("{yellow}몹을 생성할 수 없습니다. (프로토타입 없음?){reset}")
+    end
+end)
+
+-- *교체 — 아이템 교체 (현재 장착 → 새 아이템)
+register_command("*교체", function(ctx, args)
+    if not is_dm(ctx, CLASS_DM) then dm_deny(ctx); return end
+    if not args or args == "" then
+        ctx:send("사용법: *교체 <대상> <아이템번호>")
+        return
+    end
+    local target_name, vnum_str = args:match("^(%S+)%s+(%d+)$")
+    if not target_name then
+        ctx:send("사용법: *교체 <대상> <아이템번호>")
+        return
+    end
+    local target = ctx:find_player(target_name)
+    if not target then
+        ctx:send("그런 플레이어를 찾을 수 없습니다.")
+        return
+    end
+    local ok = ctx:give_item(target, tonumber(vnum_str))
+    if ok then
+        ctx:send("{green}" .. target.name .. "에게 아이템 #" .. vnum_str .. "을 지급했습니다.{reset}")
+    else
+        ctx:send("{yellow}아이템을 지급할 수 없습니다.{reset}")
+    end
+end)
+
+-- *dm_flag — 플레이어 플래그 관리 (통합)
+register_command("*dm_flag", function(ctx, args)
+    if not is_dm(ctx) then dm_deny(ctx); return end
+    if not args or args == "" then
+        ctx:send("사용법: *dm_flag <대상> <set|clear> <플래그번호>")
+        return
+    end
+    local name, action, flag_str = args:match("^(%S+)%s+(%S+)%s+(%d+)$")
+    if not name then
+        ctx:send("사용법: *dm_flag <대상> <set|clear> <플래그번호>")
+        return
+    end
+    local target = ctx:find_player(name)
+    if not target then
+        ctx:send("그런 플레이어를 찾을 수 없습니다.")
+        return
+    end
+    local flag = tonumber(flag_str)
+    if action == "set" then
+        pcall(function()
+            local flags = target.flags or {}
+            flags[#flags + 1] = flag
+            target.flags = flags
+        end)
+        ctx:send("{green}" .. name .. "에게 플래그 " .. flag .. " 설정{reset}")
+    elseif action == "clear" then
+        pcall(function()
+            local flags = target.flags or {}
+            local new = {}
+            for _, f in ipairs(flags) do
+                if f ~= flag then new[#new + 1] = f end
+            end
+            target.flags = new
+        end)
+        ctx:send("{green}" .. name .. "에게서 플래그 " .. flag .. " 해제{reset}")
+    else
+        ctx:send("action: set 또는 clear")
+    end
+end)
+
+-- *dm_system — 시스템 정보
+register_command("*dm_system", function(ctx, args)
+    if not is_dm(ctx) then dm_deny(ctx); return end
+    local lines = {
+        "{bright_cyan}━━━ 시스템 정보 ━━━{reset}",
+        "  Lua: " .. _VERSION,
+    }
+    pcall(function()
+        lines[#lines + 1] = "  명령어: " .. tostring(ctx:get_command_count()) .. "개"
+    end)
+    lines[#lines + 1] = "{bright_cyan}━━━━━━━━━━━━━━━━{reset}"
+    ctx:send(table.concat(lines, "\r\n"))
+end)
+
+-- *dm_killmud — 강제 서버 종료
+register_command("*dm_killmud", function(ctx, args)
+    if not is_dm(ctx, CLASS_ME) then dm_deny(ctx); return end
+    ctx:send_all("{bright_red}[시스템] 관리자에 의해 서버를 종료합니다!{reset}")
+    ctx:shutdown()
+end)
+
+-- *dm_event — 이벤트 관리
+register_command("*dm_event", function(ctx, args)
+    if not is_dm(ctx) then dm_deny(ctx); return end
+    if not args or args == "" then
+        ctx:send("사용법: *dm_event <시작|종료|상태> [설명]")
+        return
+    end
+    local sub = args:match("^(%S+)")
+    if sub == "시작" then
+        local desc = args:match("^%S+%s+(.+)$") or "이벤트"
+        _G._3eyes_event = {active=true, desc=desc, time=os.time()}
+        ctx:send_all("{bright_yellow}━━━ 이벤트 시작! ━━━{reset}")
+        ctx:send_all("{bright_yellow}  " .. desc .. "{reset}")
+        ctx:send_all("{bright_yellow}━━━━━━━━━━━━━━━━━━━{reset}")
+    elseif sub == "종료" then
+        _G._3eyes_event = nil
+        ctx:send_all("{bright_yellow}━━━ 이벤트 종료 ━━━{reset}")
+    else
+        local ev = _G._3eyes_event
+        if ev and ev.active then
+            ctx:send("이벤트: " .. (ev.desc or "?") .. " (진행중)")
+        else
+            ctx:send("진행중인 이벤트가 없습니다.")
+        end
+    end
+end)
+
+-- *dm_zone_set — 존 속성 설정
+register_command("*dm_zone_set", function(ctx, args)
+    if not is_dm(ctx, CLASS_REALZONEMAKER) then dm_deny(ctx); return end
+    if not args or args == "" then
+        ctx:send("사용법: *dm_zone_set <존번호> <key> <value>")
+        return
+    end
+    ctx:send("존 설정 기능은 추후 구현 예정입니다.")
+end)
+
+-- *dm_passwd — 플레이어 패스워드 리셋
+register_command("*dm_passwd", function(ctx, args)
+    if not is_dm(ctx, CLASS_ME) then dm_deny(ctx); return end
+    if not args or args == "" then
+        ctx:send("사용법: *dm_passwd <플레이어> <새패스워드>")
+        return
+    end
+    local name, newpw = args:match("^(%S+)%s+(.+)$")
+    if not name or not newpw then
+        ctx:send("사용법: *dm_passwd <플레이어> <새패스워드>")
+        return
+    end
+    local ok = ctx:set_password(name, newpw)
+    if ok then
+        ctx:send("{green}" .. name .. "의 패스워드가 변경되었습니다.{reset}")
+    else
+        ctx:send("{yellow}패스워드를 변경할 수 없습니다.{reset}")
+    end
+end)
+
+-- IP 관리 시리즈 (stub — 실제 IP 관리는 Python 레벨)
+local function ip_manage_stub(ctx, args, list_name)
+    if not is_dm(ctx, CLASS_DM) then dm_deny(ctx); return end
+    if not args or args == "" then
+        ctx:send("사용법: *" .. list_name .. " <list|add|remove|reload> [IP]")
+        return
+    end
+    ctx:send(list_name .. " IP 관리: " .. args)
+end
+
+register_command("*badip", function(ctx, args) ip_manage_stub(ctx, args, "badip") end)
+register_command("*allowip", function(ctx, args) ip_manage_stub(ctx, args, "allowip") end)
+register_command("*vipip", function(ctx, args) ip_manage_stub(ctx, args, "vipip") end)
+register_command("*limitip", function(ctx, args) ip_manage_stub(ctx, args, "limitip") end)
+register_command("*payip", function(ctx, args) ip_manage_stub(ctx, args, "payip") end)

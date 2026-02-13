@@ -1,6 +1,6 @@
 # GenOS 완벽 전환 가이드 — 원본 MUD → GenOS Engine
 
-**Version 1.0 | 2026-02-13 | 3eyes 포팅 실전 사례 기반**
+**Version 2.0 | 2026-02-14 | 3eyes 포팅 실전 사례 기반 + 명령어 전환 플레이북**
 
 이 문서는 원본 MUD 소스를 GenOS Engine으로 완벽하게 전환하는 전 과정을
 3eyes (Mordor 2.0) 포팅 실전 사례를 중심으로, tbaMUD/10woongi/simoon 패턴까지
@@ -31,6 +31,17 @@
 11. [공통 함정과 해결책](#11-공통-함정과-해결책)
 12. [검증 체크리스트](#12-검증-체크리스트)
 13. [실전 사례: 3eyes 전체 전환 기록](#13-실전-사례-3eyes-전체-전환-기록)
+14. [명령어 전환 실전 플레이북](#14-명령어-전환-실전-플레이북)
+   - 14.1 [명령어 전수 조사 방법](#141-명령어-전수-조사-방법)
+   - 14.2 [명령어 7가지 유형별 전환 패턴](#142-명령어-7가지-유형별-전환-패턴)
+   - 14.3 [common → game 오버라이드 전략](#143-common--game-오버라이드-전략)
+   - 14.4 [SOV 파싱 함정과 해결책](#144-sov-파싱-함정과-해결책)
+   - 14.5 [Lua ↔ Python 인터옵 실전 함정](#145-lua--python-인터옵-실전-함정)
+   - 14.6 [테스트 작성 패턴](#146-테스트-작성-패턴)
+   - 14.7 [게임별 명령어 체계 특성](#147-게임별-명령어-체계-특성)
+   - 14.8 [전환 작업 순서 (권장)](#148-전환-작업-순서-권장)
+   - 14.9 [빠른 참조: ctx API 전체 목록](#149-빠른-참조-ctx-api-전체-목록)
+   - 14.10 [최종 검증 스크립트](#1410-최종-검증-스크립트)
 
 ---
 
@@ -1438,7 +1449,7 @@ find games/<game>/lua -name "*.lua" | xargs wc -l
 | 분류 | 파일 수 | 줄 수 |
 |------|---------|-------|
 | Python (게임 로직) | 5 | 1,550 |
-| Lua (명령어/전투/마법) | 22 | 7,480 |
+| Lua (명령어/전투/마법) | 24 | 9,828 |
 | Lua (마이그레이션 데이터) | 8 | 1,690 |
 | SQL (스키마+데이터) | 2 | 45,818 |
 | Config | 1 | 34 |
@@ -1464,33 +1475,44 @@ find games/<game>/lua -name "*.lua" | xargs wc -l
 | 종족 (races) | 8 |
 | 텍스트 파일 (text_files) | 6 |
 
-### 13.3 구현된 명령어 (~180개)
+### 13.3 구현된 명령어 (297개 활성 / 321개 등록)
+
+**Phase 1~8 (209개) + Batch 1~7 미포팅 명령어 추가 (88개) = 297개 활성**
 
 ```
-전투 (9): kill, flee, search, bash, kick, trip, berserk, rescue, backstab
+전투 (15): kill, flee, search, bash, kick, trip, berserk, rescue, backstab,
+           주문해제, 해제, 일격필살, 그림자공격, 그림자대기, 던져
 마법 (4): cast, practice, teach, study → 62 주문
-이동 (8): n/s/e/w/u/d, open, close, enter, scan
-아이템 (10): get, drop, put, give, wear, wield, hold, remove, eat, drink
-통신 (8): say, tell, yell, gsay, broadcast, emote, shout, whisper
-정보 (16): score, who, equipment, inventory, look, exits, map, title,
+이동 (12): n/s/e/w/u/d + 대각선(4) + 나가, 나가는길
+아이템 (12): get, drop, put, give, wear, wield, hold, remove, eat, drink,
+            사용/zap, 긁어
+통신 (12): say, tell, yell, gsay, broadcast, emote, shout, whisper,
+           내보내, 듣기거부, 수신거부, 뉴스
+정보 (19): score, who, equipment, inventory, look, exits, map, title,
            affects, health, consider, compare, time, weather, spells,
-           brief/prompt/toggle
-은신 (5): sneak, hide, pick, steal, backstab
+           brief/prompt/toggle, 사용자정보, 감정, 묘사
+소셜 (39): 미소, 절, 웃어, 춤, 노래, 울어, 안아 등 39개 감정표현
+은신 (6): sneak, hide, pick, steal, backstab, 엿봐
 상점 (7): buy, sell, list, value, appraise, repair, trade
 경제 (6): deposit, withdraw, balance, locker, transfer, auction, bid
-커뮤니티 (12): blist, read, write, delete, fcreate, fjoin, fleave,
-               fkick, ftalk, flist, finfo, fdisband
+커뮤니티 (15): blist, read, write, delete, fcreate, fjoin, fleave,
+               fkick, ftalk, flist, finfo, fdisband, 선전포고,
+               편지보내기, 편지받기, 편지삭제
 결혼 (4): propose, accept, marry, divorce
-성장 (4): train, power, meditate, accurate
-특수 (10): forge, enhance, poker(5), rank, alias, unalias, chaos,
-           killer, surrender, rename, version
-관리자 (~40): goto, transfer, at, teleport, load, purge, destroy,
-             restore, advance, set(15), force, freeze, jail, ban, mute,
-             stat, where, zstat, invis, visible, snoop, shutdown, reboot,
-             reload, saveworld, announce, zreset, slay, peace, dmheal,
-             dmgive, echo, gecho, setflag, clearflag, dmteach, uptime, users
+성장 (10): train, power, meditate, accurate, 직업전환, 향상,
+           혈도봉쇄, 흡성대법, 경공술, 신원법
+기술 (4): 추적, 독살포, 경계, 멸혼술
+특수 (14): forge, enhance, poker(5), rank, alias, unalias, chaos,
+           killer, surrender, rename, version, 경험치전수, 메모,
+           투체변신술, 무술대회서열
+관리자 (~60): 기존 40 + DM 한국어 별칭(~40) + 신규 DM(~20)
+             *방제작, *방이름, *방삭제, *방설명, *물건이름, *괴물,
+             *교체, *dm_flag, *dm_system, *dm_event 등
 기본 (2): quit, save
+별칭 (~15): 봐→look, 사→buy, 저장→save, 귀→귀환 등
 ```
+
+> **비활성화(nil)**: 24개 (common 명령어 중 원본에 없는 것: exits, commands, junk 등)
 
 ### 13.4 Python 전용 시스템 (Lua로 이식 불가)
 
@@ -1569,6 +1591,664 @@ genos_<game>
 
 ---
 
+---
+
+## 14. 명령어 전환 실전 플레이북
+
+**3eyes 전환(203→297개)에서 축적된 노하우. 다른 6개 게임에도 동일 적용.**
+
+### 14.1 명령어 전수 조사 방법
+
+원본에서 명령어 목록을 빠짐없이 추출하는 것이 첫 단계입니다.
+
+| 엔진 | 추출 방법 | 예시 |
+|------|-----------|------|
+| Mordor 2.0 (3eyes, muhan13) | `command*.c`의 `cmd[]` 배열에서 `{cmd_no, name, func, level}` 추출 | `grep 'cmd\[' command*.c` |
+| Mordor 확장 (murim) | 동일 + `kyk*.c` 추가 명령어 확인 | `grep 'ADDCMD\|addcom' kyk*.c` |
+| CircleMUD (tbaMUD, simoon) | `interpreter.c`의 `cmd_info[]` → `{command, func, min_pos, min_level}` | `grep '{.*do_.*}' interpreter.c` |
+| SMAUG (99hunter) | `명령어.dat`(488줄) + `tables.c`의 `cmd_table[]` | 파일 직접 파싱 |
+| LP-MUD (10woongi) | `add_action()` 호출 + `lib/삽입파일/명령어.h` 매핑 배열 | `grep add_action lib/**/*.c` |
+
+**전수 조사 절차:**
+
+```bash
+# 1단계: 원본 명령어 목록 추출 → cmdlist_original.txt
+# 2단계: 현재 GenOS 등록 명령어 추출
+grep -r 'register_command(' games/<game>/lua/ --include='*.lua' -h \
+  | grep -v '^\s*--' | sed 's/.*register_command("\([^"]*\)".*/\1/' | sort > cmdlist_genos.txt
+# 3단계: diff로 미등록 확인
+comm -23 cmdlist_original.txt cmdlist_genos.txt > missing.txt
+```
+
+### 14.2 명령어 7가지 유형별 전환 패턴
+
+모든 명령어는 아래 7가지 유형 중 하나로 분류됩니다.
+유형에 따라 구현 패턴이 완전히 다릅니다.
+
+#### 유형 1: 단순 별칭 (Alias)
+
+기존 명령어를 다른 이름으로 호출. **가장 많고 가장 쉬움.**
+
+```lua
+-- 패턴: register_command(별칭, function → call_command(원본))
+register_command("봐", function(ctx, args) ctx:call_command("look", args or "") end)
+register_command("사", function(ctx, args) ctx:call_command("구매", args or "") end)
+```
+
+**주의사항:**
+- `ctx:call_command("구입", ...)` 같은 **자기참조 절대 금지** → 무한재귀
+- 원본 명령어가 `register_command(원본, nil)`로 비활성화되지 않았는지 확인
+- 별칭은 overrides.lua에 모아놓기 (관리 편의)
+
+#### 유형 2: common 비활성화 (nil Override)
+
+원본에 없는 common 명령어를 게임에서 제거합니다.
+
+```lua
+-- 패턴: register_command(영어명, nil) — 해당 명령어 완전 비활성화
+register_command("exits", nil)      -- 원본에 없는 영문 명령어
+register_command("junk", nil)       -- common 기본 명령어이나 원본에 없음
+register_command("kill", nil)       -- combat.lua에서 한글로 재등록
+```
+
+**주의사항:**
+- nil 등록은 **반드시 게임 Lua 로딩 순서 이후**에 실행 (common이 먼저 로드됨)
+- overrides.lua 최상단에 nil 등록을 모아놓기 (명시적)
+- 비활성화 후 같은 기능을 한글명으로 재등록하는 경우 주석으로 매핑 명시
+
+#### 유형 3: 한글 재등록 (Korean Name + 원본 로직)
+
+common의 영어 명령어를 비활성화하고 한글명으로 재등록합니다.
+
+```lua
+-- 패턴: nil → 새 한글명 등록
+register_command("kill", nil)                    -- common 영어 제거
+register_command("공격", function(ctx, args)      -- 원본 한글명으로 재등록
+    local ch = ctx.char
+    if not args or args == "" then
+        ctx:send("누구를 공격하시겠습니까?"); return
+    end
+    local target = ctx:find_char(args)
+    -- ... (게임별 로직)
+end)
+```
+
+**이 패턴이 원본 재현의 핵심.** 게임별 한글 명령어명을 원본 cmdlist에서 정확히 가져와야 합니다.
+
+#### 유형 4: 테이블 구동 (Table-Driven)
+
+소셜/감정 등 동일 패턴 반복 명령어는 데이터 테이블로 구동합니다.
+
+```lua
+local EMOTES = {
+    -- {cmd, 혼자, 방_혼자, 대상O_나, 대상O_상대, 대상O_방}
+    {"미소", "$n이(가) 미소짓습니다.",
+             "$n이(가) 미소짓습니다.",
+             "$N에게 미소짓습니다.",
+             "$n이(가) 당신에게 미소짓습니다.",
+             "$n이(가) $N에게 미소짓습니다."},
+    -- ... 39개 소셜
+}
+
+for _, e in ipairs(EMOTES) do
+    register_command(e[1], function(ctx, args) do_emote(ctx, args, e) end)
+end
+```
+
+**장점**: 39개 소셜이 ~250줄 (개별 구현 시 ~800줄)
+**적용 대상**: 소셜, 소환 주문, 버프 주문, DM 명령어 등
+
+#### 유형 5: 게이트 체크 (Gated Command)
+
+방 플래그/클래스/레벨/쿨다운 등 조건을 먼저 검사합니다.
+
+```lua
+register_command("수련", function(ctx, args)
+    -- Gate 1: 방 플래그
+    if not te_room_has_flag(ctx, 8) then  -- RTRAIN
+        ctx:send("전직 방을 찾아가세요."); return
+    end
+    -- Gate 2: 클래스
+    if ch.class_id < 1 or ch.class_id > 8 then
+        ctx:send("이미 전직했습니다."); return
+    end
+    -- Gate 3: 레벨
+    if ch.level < 200 then ctx:send("레벨 부족"); return end
+    -- Gate 4: 쿨다운
+    local cd = ctx:check_cooldown(LT_TRAIN)
+    if cd > 0 then ctx:send("대기: " .. cd .. "초"); return end
+    -- Gate 5: 비용 (골드/경험치)
+    if ch.gold < cost then ctx:send("골드 부족"); return end
+    -- 실행
+    ch.gold = ch.gold - cost
+    ctx:set_cooldown(LT_TRAIN, 60)
+    ctx:send("전직 성공!")
+end)
+```
+
+**체크 순서 규칙**: 방 → 클래스 → 레벨 → 쿨다운 → 비용 → 실행
+
+#### 유형 6: DM 관리 명령어
+
+모든 DM 명령어는 `*` 접두사 + 권한 체크로 시작합니다.
+
+```lua
+local function is_dm(ctx, min_class)
+    min_class = min_class or CLASS_DM
+    return ctx.char and ctx.char.class_id >= min_class
+end
+
+register_command("*순간이동", function(ctx, args)
+    if not is_dm(ctx) then ctx:send("관리자 전용"); return end
+    local vnum = tonumber(args)
+    if not vnum then ctx:send("사용법: *순간이동 <방번호>"); return end
+    if not ctx:room_exists(vnum) then ctx:send("방 없음"); return end
+    ctx:teleport_to(vnum)
+    ctx:defer_look()
+end)
+```
+
+**DM 등급 계층**: ZONEMAKER(13) < REALZONEMAKER(14) < SUB_DM(15) < DM(16) < ME(17)
+- 일반 DM 명령어: `is_dm(ctx)` (class_id >= 16)
+- 존 편집: `is_dm(ctx, CLASS_ZONEMAKER)` (class_id >= 13)
+
+#### 유형 7: 상태 변경 (State Mutation)
+
+플레이어/NPC의 상태를 직접 변경하는 명령어입니다.
+
+```lua
+register_command("쉬어", function(ctx, args)
+    local ch = ctx.char
+    if ch.position == POS_RESTING then ctx:send("이미 쉬고 있습니다."); return end
+    if ch.fighting then ctx:send("전투 중!"); return end
+    ch.position = POS_RESTING   -- 직접 상태 변경
+    ctx:send("쉬기 시작합니다.")
+end)
+```
+
+**주의**: `ch.position`, `ch.gold`, `ch.experience`, `ch.hp` 등은 Lua에서 직접 변경 가능.
+**불가**: `ch.inventory`, `ch.equipment`, `room.characters` 등 Python list/dict는 ctx 헬퍼 사용 필수.
+
+---
+
+### 14.3 common → game 오버라이드 전략
+
+GenOS는 common/lua → game/lua 순서로 로드합니다.
+**나중에 같은 이름으로 register_command하면 덮어쓰기됩니다.**
+
+```
+로딩 순서:
+  1. common/lua/lib.lua           ← 공통 유틸
+  2. common/lua/commands/*.lua    ← 공통 명령어 (영문 기반)
+  3. games/<game>/lua/lib.lua     ← 게임별 유틸 + 상수
+  4. games/<game>/lua/commands/overrides.lua  ← ★ 비활성화 + 별칭
+  5. games/<game>/lua/commands/*.lua  ← 게임별 한글 명령어
+  6. games/<game>/lua/combat/*.lua   ← 전투/마법
+```
+
+**overrides.lua의 3단계 패턴:**
+
+```lua
+-- ① 원본에 없는 common 명령어 비활성화
+register_command("exits", nil)
+register_command("commands", nil)
+
+-- ② 한글로 재등록할 영어명 제거 (게임 Lua에서 재등록됨)
+register_command("kill", nil)       -- → combat.lua: 공격
+register_command("take", nil)       -- → items.lua: 주워
+register_command("say", nil)        -- → comm.lua: 말
+
+-- ③ 단순 별칭 등록
+register_command("봐", function(ctx, args) ctx:call_command("look", args or "") end)
+register_command("저장", function(ctx, args) ctx:call_command("save", args or "") end)
+```
+
+**★ 핵심 원칙: 원본에 없는 명령어는 nil, 원본에 있는 명령어는 반드시 원본 이름으로.**
+
+---
+
+### 14.4 SOV 파싱 함정과 해결책
+
+GenOS 명령어 파서는 **SOV(한국어) 우선 + SVO(영문) 폴백** 순서로 동작합니다.
+
+```
+입력: "고블린 공격"
+  → SOV: 마지막 토큰 "공격" = 동사? → cmd_handlers["공격"] or cmd_korean["공격"]→"attack"
+  → args = "고블린"
+
+입력: "attack goblin"
+  → SOV: "goblin" = 동사? → 없음
+  → SVO: "attack" = 동사? → cmd_handlers["attack"] → YES
+  → args = "goblin"
+```
+
+#### 함정 1: 명령어명이 인자와 겹치는 경우
+
+```
+입력: "메모 중요한 메모"
+  → SOV: 마지막 "메모" = 등록 명령어 → args = "메모 중요한"  ← ❌ 순서 뒤집힘!
+```
+
+**해결**: 명령어명이 인자에도 등장할 수 있는 경우, 테스트에서 중복 없는 인자 사용.
+실제 게임 플레이에서는 드문 케이스이므로 Lua 단에서 처리 불필요.
+
+#### 함정 2: `look` 명령어 재등록 → 무한 재귀
+
+```lua
+-- ❌ 절대 금지!
+register_command("look", function(ctx, args)
+    ctx:defer_look()  -- defer_look이 cmd_handlers["look"]을 호출 → 자기자신 → ∞
+end)
+
+-- ✅ 올바른 방법: look은 common에서 제공, 한글 별칭만 등록
+register_command("봐", function(ctx, args) ctx:call_command("look", args or "") end)
+```
+
+`defer_look()`은 내부적으로 `cmd_handlers["look"]`을 호출합니다.
+따라서 `look`을 Lua로 재등록하면 무한 재귀가 발생합니다.
+**`look`은 common 구현을 그대로 사용하고, 별칭만 등록하세요.**
+
+#### 함정 3: 방향 초성과 명령어 초성 충돌
+
+```python
+# 방향 초성은 DIR_NAMES_KR_MAP에 등록 (process_command에서 방향으로 처리)
+DIR_NAMES_KR_MAP = {"ㅂ": 0, "ㄷ": 1, "ㄴ": 2, "ㅅ": 3, "ㅇ": 4, "ㅁ": 5}
+
+# 명령어 초성은 CHOSEONG_MAP에 등록 (별도 확장 단계에서 처리)
+CHOSEONG_MAP = {"ㄱ": "공격", "ㅈ": "저장", "ㅊ": "착용", "ㅎ": "help"}
+```
+
+**원칙**: 방향과 겹치는 초성(ㅂ/ㄷ/ㄴ/ㅅ/ㅇ/ㅁ)은 **방향이 우선**.
+나머지(ㄱ/ㅈ/ㅊ/ㅎ/ㄹ)만 CHOSEONG_MAP에 등록.
+
+#### 함정 4: `_resolve_command`에서 직접 핸들러가 Korean 매핑보다 우선
+
+```
+"공격" 입력 시:
+  1. cmd_handlers["공격"] → 게임별 Lua 핸들러 (있으면 이것 사용)
+  2. cmd_korean["공격"] → "attack" → cmd_handlers["attack"] (1이 없을 때만)
+```
+
+**이 우선순위 덕분에** 게임별 한글 명령어가 글로벌 Korean 매핑을 안전하게 오버라이드합니다.
+예: 3eyes의 `register_command("공격", custom_handler)` → KOREAN_VERB_MAP["공격"]="attack"보다 우선.
+
+---
+
+### 14.5 Lua ↔ Python 인터옵 실전 함정
+
+#### 함정 1: lupa + MagicMock = OOM (치명적!)
+
+```python
+# ❌ 절대 금지! 테스트에서 MagicMock 사용
+session = MagicMock()  # lupa가 __getitem__으로 접근 → 모든 키에 non-nil 반환
+                       # Lua의 `while pcall(fn) / if nil then break end` → 무한루프 → OOM
+
+# ✅ 반드시 SimpleNamespace 사용
+session = SimpleNamespace()
+session.send_line = AsyncMock()
+session.character = char
+session.player_data = {"level": 1, "name": "테스터"}
+```
+
+**원인**: lupa는 Python 객체에 `__getitem__`으로 속성 접근합니다.
+MagicMock은 모든 키에 대해 새 MagicMock(non-nil)을 반환합니다.
+Lua에서 `pcall + nil break` 패턴이 무한루프에 빠집니다.
+
+#### 함정 2: Python list/dict 직접 조작 불가
+
+```lua
+-- ❌ 작동하지 않음
+local inv = ch.inventory     -- Python list 프록시
+#inv                          -- 항상 0 (Python list에 # 연산자 미지원)
+table.insert(inv, item)      -- 무효 (Python list에 table.insert 불가)
+inv[1]                        -- nil (Python list는 0-indexed)
+
+-- ✅ ctx 헬퍼 사용
+local count = ctx:get_inv_count()    -- Python에서 len() 호출
+for i = 0, count - 1 do             -- 0-indexed 반복
+    local ok, item = pcall(function() return ch.inventory[i] end)
+    if not ok or item == nil then break end
+    -- ...
+end
+```
+
+#### 함정 3: set_player_data로 Lua table 저장 시 Python 호환 문제
+
+```lua
+-- ⚠️ 주의: Lua table을 set_player_data에 저장하면 LuaTable 프록시가 됨
+local list = {"a", "b", "c"}
+ctx:set_player_data("my_list", list)
+-- Python에서: session.player_data["my_list"] → lupa.LuaTable (not Python list)
+-- Python의 `in` 연산자 작동 안 될 수 있음
+
+-- ✅ 테스트에서는 메시지 검증이 더 안전
+msgs = _get_sent(session)
+assert any("수신거부합니다" in m for m in msgs)  -- 상태 검증 대신 메시지 검증
+```
+
+#### 함정 4: frozen dataclass 속성은 Lua에서 설정 불가
+
+```lua
+-- ⚠️ MobProto는 frozen=True → proto.stats["str"] = 15 가능하나 proto.stats = {} 불가
+-- MobInstance는 mutable → ch.gold = 100 가능, ch.hp = 50 가능
+-- 그러나 ch.stats가 proto.stats를 참조하면 frozen 제약 받을 수 있음
+
+-- ✅ pcall로 안전하게 감싸기
+pcall(function()
+    if not ch.stats then ch.stats = {} end
+    ch.stats[stat_name] = new_val
+end)
+```
+
+---
+
+### 14.6 테스트 작성 패턴
+
+#### 기본 테스트 구조
+
+```python
+@pytest.mark.asyncio
+async def test_명령어_기본(self):
+    eng = _make_engine()                    # Engine + World + Lua 초기화
+    ch = _player(level=10, room_vnum=100)   # SimpleNamespace 기반 캐릭터
+    session = _make_session(eng, ch)        # SimpleNamespace 세션 (MagicMock 금지!)
+    eng.world.rooms[100].characters = [ch]  # 방에 캐릭터 배치
+
+    await eng.process_command(session, "명령어 인자")  # 단일 문자열!
+
+    msgs = _get_sent(session)               # send_line.call_args_list → str 리스트
+    assert any("기대 메시지" in m for m in msgs)
+```
+
+#### 핵심 규칙
+
+| 규칙 | 올바른 예 | 잘못된 예 |
+|------|-----------|-----------|
+| process_command 인자 | `process_command(session, "공격 고블린")` | `process_command(session, "공격", "고블린")` |
+| 세션 생성 | `SimpleNamespace()` | `MagicMock()` |
+| 상태 검증 | `assert any("메시지" in m for m in msgs)` | `assert session.player_data["key"] == value` |
+| 골드/HP 검증 | 직접 `ch.gold` 확인 가능 | Lua table 반환값 검증은 불안정 |
+| send_all 테스트 | `eng.sessions["s1"] = session` 먼저 등록 | session 미등록 시 broadcast 안 됨 |
+
+#### `_get_sent()` 헬퍼
+
+```python
+def _get_sent(session):
+    """send_line 호출 내역을 문자열 리스트로 반환."""
+    return [str(c) for c in session.send_line.call_args_list]
+    # 각 요소: "call('메시지 텍스트')"
+    # "메시지" in "call('메시지 텍스트')" → True
+```
+
+#### 테스트 수 가이드
+
+- 소셜/별칭: 대표 1~2개만 (패턴이 동일)
+- 핵심 명령어: 각각 최소 1개 (성공 케이스)
+- DM 명령어: 권한 체크 1개 + 기능 1~2개
+- 전투/마법: 기존 combat 테스트와 통합
+
+---
+
+### 14.7 게임별 명령어 체계 특성
+
+| 게임 | 명령어 체계 | 핵심 차이점 |
+|------|-------------|-------------|
+| **3eyes** | 한글 전용 + 영문 호환 | 360개, `*DM` 접두사, 초성 약어, 소셜 39개, 별명 20개 |
+| **tbaMUD** | 영문 전용 + 한글 매핑 | 275개, prefix matching, socials 104개, 한글은 KOREAN_VERB_MAP |
+| **simoon** | 영문 기반 + 한글 혼합 | 546개, EUC-KR, tbaMUD와 유사하나 한글 명령어 추가 |
+| **10woongi** | 한글 전용 | 51개 (LPC action), `add_action` 기반, 체언 종결 |
+| **muhan13** | 3eyes와 동일 엔진 | 350개, 구조 동일하나 **struct 필드 순서 다름** |
+| **murim** | 무협 특화 한글 | ~300개, 21 클래스, 무술/내공 특화 명령어 대량 |
+| **99hunter** | 한글 전용 (SMAUG) | 488개, 30 클래스, 신/의회 시스템, &W 색상 |
+
+#### 게임별 주의사항
+
+**tbaMUD/simoon**: 이미 common 명령어 체계가 원본과 유사하므로 overrides 최소.
+대신 socials 104개를 DB socials 테이블에서 자동 로딩하는 것이 효율적.
+
+**10woongi**: `add_action("명령어", "handler_func")` → `register_command("명령어", fn)`.
+LPC 함수를 Lua로 1:1 변환. 체언 종결이므로 SOV 파서와 자연스럽게 호환.
+
+**muhan13**: 3eyes와 90% 동일. **creature struct 필드 순서가 다른 것이 유일한 차이.**
+Lua 명령어 파일은 3eyes를 복사 후 필드명만 수정하면 됩니다.
+단, creature2(4096B) 확장 struct의 별도 처리 필요.
+
+**murim**: 무술/내공 시스템이 핵심. 18종 스탯, 256개 무공, 40 착용 슬롯.
+`te_stat()` 확장 필요 (5→18종), lib.lua에 무술 전용 유틸 추가.
+
+**99hunter**: SMAUG 명령어 체계는 CircleMUD과 크게 다름.
+MOB S/C 타입, Direction 10, 4×32 bitvector 등 고유 처리 필요.
+`&W`/`&g` 색상 코드 → `{white}`/`{green}` 변환기 필요.
+
+---
+
+### 14.8 전환 작업 순서 (권장)
+
+모든 게임에 적용 가능한 검증된 순서입니다.
+
+```
+1. 원본 cmdlist 전수 추출 + 분류 (유형 1~7)
+2. overrides.lua — nil 비활성화 + 단순 별칭 (유형 1, 2)
+3. 한글 재등록 — 기본 명령어 (look/get/drop/say 등) (유형 3)
+4. 소셜/감정 — 테이블 구동 (유형 4)
+5. 핵심 명령어 — 신규 로직 (유형 5, 7)
+6. 특수 시스템 — 게임 고유 (유형 5)
+7. DM 관리 — 별칭 + 신규 (유형 6)
+8. 편지/게시판/커뮤니티 — 부가 기능
+```
+
+**각 단계마다 `pytest tests/test_lua_<game>.py -q` 실행하여 회귀 방지.**
+
+---
+
+### 14.9 빠른 참조: ctx API 전체 목록
+
+아래는 Lua 명령어 함수 `function(ctx, args)` 의 `ctx` 객체가 제공하는 전체 메서드입니다.
+
+```lua
+-- ═══ 메시지 ═══
+ctx:send(msg)                        -- 본인에게 전송
+ctx:send_to(target, msg)             -- 특정 대상에게
+ctx:send_room(msg)                   -- 같은 방 전체 (자신 제외)
+ctx:send_all(msg)                    -- 서버 전체 브로드캐스트
+ctx:send_to_room(room_vnum, msg)     -- 특정 방 전체
+
+-- ═══ 캐릭터 조회 ═══
+ctx.char                             -- 현재 캐릭터 (MobInstance)
+ctx:find_char(keyword)               -- 현재 방에서 NPC/PC 찾기
+ctx:find_player(name)                -- 온라인 플레이어 이름 검색
+ctx:find_world_char(name)            -- 전체 월드에서 캐릭터 찾기
+ctx:get_online_players()             -- 온라인 세션 테이블
+
+-- ═══ 방/이동 ═══
+ctx:get_room(vnum?)                  -- 방 객체 (생략 시 현재 방)
+ctx:get_room_vnum()                  -- 현재 방 번호
+ctx:room_exists(vnum)                -- 방 존재 여부
+ctx:teleport_to(vnum)                -- 텔레포트
+ctx:move_to(room_vnum)               -- 이동
+ctx:move_char_to(char, room_vnum)    -- 다른 캐릭터 이동
+ctx:get_start_room()                 -- 시작/귀환 방
+ctx:get_random_room_vnum()           -- 안전 랜덤 방
+ctx:defer_look()                     -- look 명령 예약
+
+-- ═══ 출구/문 ═══
+ctx:get_exits(room?)                 -- 출구 목록 (Lua table)
+ctx:find_door(keyword)               -- 문 방향 찾기 (-1=없음)
+ctx:find_exit(dir_or_kw)             -- 출구 찾기
+ctx:has_door(dir)                    -- 문 존재 여부
+ctx:is_door_closed(dir)              -- 닫혀있나
+ctx:is_door_locked(dir)              -- 잠겨있나
+ctx:set_door_state(dir, closed, locked?)  -- 문 상태 변경
+ctx:has_key(dir)                     -- 열쇠 소유 여부
+ctx:peek_exit(dir)                   -- 출구 목적지 vnum
+ctx:peek_exit_at(room_vnum, dir)     -- 특정 방의 출구
+
+-- ═══ 아이템 ═══
+ctx:find_inv_item(keyword)           -- 인벤토리 검색
+ctx:find_equip_item(keyword)         -- 장비 검색
+ctx:find_obj_room(keyword)           -- 방 바닥 검색
+ctx:create_obj(vnum)                 -- 아이템 생성
+ctx:obj_to_char(obj, char)           -- 인벤토리에 넣기
+ctx:obj_from_char(obj)               -- 인벤토리에서 꺼내기
+ctx:obj_to_room(obj, room_vnum)      -- 바닥에 놓기
+ctx:obj_from_room(obj)               -- 바닥에서 제거
+ctx:obj_to_obj(obj, container)       -- 컨테이너에 넣기
+ctx:obj_from_obj(obj)                -- 컨테이너에서 꺼내기
+ctx:equip(obj, slot)                 -- 장비 장착
+ctx:unequip(slot)                    -- 장비 해제
+ctx:wear_item(item)                  -- 자동 슬롯 장착
+ctx:wield_item(item)                 -- 무기 장착
+ctx:remove_item(item)                -- 장비 해제
+ctx:wear_all()                       -- 전체 장착
+ctx:recalc_equip()                   -- 장비 보너스 재계산
+ctx:get_inv_count()                  -- 인벤토리 개수 (# 대체)
+
+-- ═══ 상점 ═══
+ctx:get_shop()                       -- 현재 방 상점 정보
+ctx:find_shop()                      -- (상점, 상인) 튜플
+ctx:get_shop_items()                 -- 상점 물품 목록
+ctx:get_buy_price(item)              -- 구매가
+ctx:get_sell_price(item)             -- 판매가
+ctx:buy_item(item)                   -- 구매
+ctx:sell_item(item)                  -- 판매
+
+-- ═══ 전투 ═══
+ctx:start_combat(target)             -- 전투 시작
+ctx:stop_combat(char)                -- 전투 종료
+ctx:deal_damage(target, amount)      -- 데미지 적용
+ctx:heal(target, amount)             -- HP 회복
+
+-- ═══ 어펙트/버프 ═══
+ctx:apply_affect(target, id, dur, mods?)     -- 어펙트 추가
+ctx:remove_affect(target, id)                -- 어펙트 제거
+ctx:has_affect(target, id)                   -- 어펙트 확인
+ctx:apply_spell_buff(target, spell, dur, mods?)  -- 스펠 버프
+ctx:remove_spell_affect(target, spell)       -- 스펠 해제
+ctx:has_spell_affect(target, spell)          -- 스펠 확인
+ctx:get_affects(target)                      -- 전체 어펙트 목록
+
+-- ═══ 쿨다운 ═══
+ctx:check_cooldown(slot)             -- 남은 초 (0=준비완료)
+ctx:set_cooldown(slot, seconds)      -- 쿨다운 설정
+ctx:clear_cooldown(slot)             -- 쿨다운 해제
+
+-- ═══ 플래그 ═══
+ctx:has_flag(flag_id)                -- 플래그 확인
+ctx:set_flag(flag_id)                -- 플래그 설정
+ctx:clear_flag(flag_id)              -- 플래그 해제
+ctx:has_mob_flag(target, flag_name)  -- NPC 플래그
+ctx:has_room_flag(flag_name)         -- 방 플래그
+
+-- ═══ 플레이어 데이터 ═══
+ctx:get_player_data(key)             -- JSONB 필드 읽기
+ctx:set_player_data(key, value)      -- JSONB 필드 쓰기
+ctx:set_player_data_on(target, key, value)  -- 다른 PC의 데이터
+
+-- ═══ 스킬/주문 ═══
+ctx:knows_spell(spell_id)            -- 주문 습득 여부
+ctx:learn_spell(spell_id)            -- 주문 학습
+ctx:learn_spell_for(target, spell_id) -- 다른 PC에게 주문 학습
+ctx:forget_spell(spell_id)           -- 주문 망각
+ctx:get_skill_proficiency(name_or_char, skill_id)  -- 숙련도
+ctx:practice_skill(skill_id, gain)   -- 숙련도 상승
+ctx:get_all_skills()                 -- 전체 스킬 목록
+
+-- ═══ 자원 ═══
+ctx:add_hp(amount)                   -- HP 증감
+ctx:add_mana(amount)                 -- MP 증감
+ctx:add_move(amount)                 -- 이동력 증감
+
+-- ═══ 생성/제거 ═══
+ctx:create_mob(vnum, room_vnum)      -- 몬스터 생성
+ctx:load_mob(vnum)                   -- 현재 방에 몹 생성
+ctx:load_obj(vnum)                   -- 아이템 생성 후 인벤토리
+ctx:purge_room()                     -- 방 정리
+ctx:remove_char_from_room(char)      -- 방에서 제거
+ctx:extract_char(char)               -- 월드에서 완전 제거
+
+-- ═══ 따라가기 ═══
+ctx:follow(target)                   -- 따라가기
+ctx:unfollow()                       -- 따라가기 해제
+ctx:get_following()                  -- 현재 따라가는 대상
+ctx:get_followers()                  -- 따라오는 자 목록
+
+-- ═══ 정보 ═══
+ctx:get_help(keyword)                -- 도움말 검색
+ctx:get_all_commands()               -- 전체 명령어 목록
+ctx:get_aliases()                    -- 별칭 목록
+ctx:set_alias(name, cmd)             -- 별칭 설정
+ctx:get_class(class_id)              -- 직업 정보
+ctx:get_skill(skill_id)              -- 스킬 정보
+ctx:get_config(key)                  -- 게임 설정값
+ctx:get_room_name(room_vnum)         -- 방 이름
+
+-- ═══ 시간/날씨 ═══
+ctx:get_game_hour()                  -- 게임 시간
+ctx:get_game_day()                   -- 게임 날짜
+ctx:get_game_month()                 -- 게임 월
+ctx:get_game_year()                  -- 게임 년도
+ctx:get_weather()                    -- 현재 날씨
+
+-- ═══ 유틸 ═══
+ctx:random(a, b)                     -- 랜덤 정수
+ctx:roll_dice("2d6+3")              -- 주사위 굴림
+ctx:particle(word, p1, p2)           -- 한글 조사 선택
+ctx:is_admin()                       -- 관리자 여부
+ctx:log(msg)                         -- 로그 기록
+
+-- ═══ 명령어 호출 ═══
+ctx:call_command(cmd, args)          -- 다른 명령어 실행
+ctx:execute(cmd, args)               -- call_command 별칭
+
+-- ═══ 토글 ═══
+ctx:get_toggles()                    -- 토글 설정 맵
+ctx:toggle(key)                      -- 토글 전환
+
+-- ═══ 지연 실행 (Lua 종료 후 Python에서 실행) ═══
+ctx:defer_look()                     -- look 예약
+ctx:defer_death(victim, killer)      -- 사망 처리 예약
+ctx:defer_save()                     -- 저장 예약
+ctx:defer_force(target, cmd)         -- 강제 명령 예약
+ctx:defer_reload()                   -- Lua 리로드 예약
+ctx:defer_shutdown()                 -- 셧다운 예약
+```
+
+---
+
+### 14.10 최종 검증 스크립트
+
+모든 배치 완료 후 실행하는 종합 검증입니다.
+
+```bash
+cd /home/genos/workspace/genos-engine && . .venv/bin/activate
+
+# 1. 전체 테스트 통과 확인
+python -m pytest -q --tb=short    # 790+ passed
+
+# 2. 게임별 명령어 수 확인
+echo "=== 3eyes ==="
+grep -r 'register_command(' games/3eyes/lua/ --include='*.lua' -h \
+  | grep -v '^\s*--' | wc -l      # 321 total
+grep -r 'register_command(' games/3eyes/lua/ --include='*.lua' -h \
+  | grep -v '^\s*--' | grep ', nil)' | wc -l  # 24 disabled → 297 active
+
+# 3. 원본 대비 커버리지
+# 원본: 360개 → 현재: 297개 활성 (82.5%)
+# 차이: 대부분 DM 내부 명령어 + 동의어
+
+# 4. Lua 줄 수 확인
+find games/3eyes/lua -name "*.lua" | xargs wc -l | tail -1  # ~9,800줄
+
+# 5. 파일당 명령어 분포 확인 (균형 잡혔는지)
+for f in games/3eyes/lua/commands/*.lua; do
+    cnt=$(grep 'register_command(' "$f" | grep -v '^\s*--' | wc -l)
+    echo "$(basename $f): $cnt"
+done
+```
+
+---
+
 *이 문서는 3eyes 완전 전환 실전 사례를 기반으로 작성되었으며,*
 *7개 게임 전체 포팅에 적용 가능한 범용 가이드입니다.*
 *GenOS Engine v1.0 / Unified Schema v1.0 기준.*
+*§14 명령어 전환 플레이북 추가: 2026-02-14.*

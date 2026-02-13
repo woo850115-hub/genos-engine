@@ -385,3 +385,139 @@ register_command("시간", function(ctx, args)
         ctx:send("{bright_cyan}현재 시각을 알 수 없습니다.{reset}")
     end
 end)
+
+-- ══════════════════════════════════════════════════════════════════
+-- 사용자정보 (whois) — 대상 상세정보 표시
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("사용자정보", function(ctx, args)
+    if not args or args == "" then
+        ctx:send("사용법: 사용자정보 <대상>")
+        return
+    end
+    local target = ctx:find_player(args)
+    if not target then
+        ctx:send("그런 플레이어를 찾을 수 없습니다.")
+        return
+    end
+    local cls = target.class_id or CLASS_FIGHTER
+    local class_name = THREEEYES_CLASSES[cls] or "모험가"
+    local race_name = THREEEYES_RACES[target.race_id] or "인간"
+    local title = ""
+    pcall(function()
+        if target.session and target.session.player_data then
+            title = target.session.player_data.title or ""
+        end
+    end)
+
+    local lines = {
+        "{bright_cyan}━━━━━━ 사용자 정보 ━━━━━━{reset}",
+        "  이름: {bright_white}" .. target.name .. "{reset}" ..
+            (title ~= "" and (" " .. title) or ""),
+        "  종족: " .. race_name .. "  직업: {bright_yellow}" .. class_name .. "{reset}",
+        "  레벨: " .. target.level,
+    }
+    -- Marriage info
+    local partner = ""
+    pcall(function()
+        if target.session and target.session.player_data then
+            partner = target.session.player_data.partner or ""
+        end
+    end)
+    if partner ~= "" then
+        lines[#lines + 1] = "  결혼: {bright_magenta}" .. partner .. "{reset}"
+    end
+    -- Family info
+    local fam_id = 0
+    pcall(function()
+        if target.session and target.session.player_data then
+            fam_id = target.session.player_data.family_id or 0
+        end
+    end)
+    if fam_id > 0 then
+        lines[#lines + 1] = "  가족: ID=" .. fam_id
+    end
+    lines[#lines + 1] = "{bright_cyan}━━━━━━━━━━━━━━━━━━━━━━━━━{reset}"
+    ctx:send(table.concat(lines, "\r\n"))
+end)
+
+-- ══════════════════════════════════════════════════════════════════
+-- 감정 — 아이템 상세 감정 (command8.c identify/appraise)
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("감정", function(ctx, args)
+    if not args or args == "" then
+        -- "감정" alone — 감정표현 emote로 전달하지 않음 (info 명령어)
+        ctx:send("사용법: 감정 <아이템>")
+        return
+    end
+    local item = ctx:find_inv_item(args)
+    if not item then
+        item = ctx:find_equip_item(args)
+    end
+    if not item then
+        ctx:send("그런 물건을 가지고 있지 않습니다.")
+        return
+    end
+    local proto = item.proto
+    local lines = {
+        "{bright_cyan}━━━━━━ 아이템 감정 ━━━━━━{reset}",
+        "  이름: {bright_white}" .. item.name .. "{reset}",
+        "  종류: " .. (proto.item_type or "unknown"),
+    }
+    local ok_c, cost = pcall(function() return proto.cost or 0 end)
+    if ok_c then lines[#lines + 1] = "  가치: {yellow}" .. (cost or 0) .. "원{reset}" end
+    local ok_w, weight = pcall(function() return proto.weight or 0 end)
+    if ok_w then lines[#lines + 1] = "  무게: " .. (weight or 0) end
+    local ok_a, adj = pcall(function() return item.adjustment or 0 end)
+    if ok_a and adj > 0 then lines[#lines + 1] = "  강화: {bright_green}+" .. adj .. "{reset}" end
+    -- Values
+    local ok_v, vals = pcall(function() return proto.values end)
+    if ok_v and vals then
+        local val_str = ""
+        pcall(function()
+            for k, v in pairs(vals) do
+                val_str = val_str .. " " .. tostring(k) .. "=" .. tostring(v)
+            end
+        end)
+        if val_str ~= "" then
+            lines[#lines + 1] = "  속성:" .. val_str
+        end
+    end
+    -- Wear slots
+    local ok_ws, ws = pcall(function() return proto.wear_slots end)
+    if ok_ws and ws then
+        local slots = {}
+        pcall(function()
+            for si = 0, 20 do
+                local ok2, s = pcall(function() return ws[si] end)
+                if not ok2 or not s then break end
+                table.insert(slots, tostring(s))
+            end
+        end)
+        if #slots > 0 then
+            lines[#lines + 1] = "  착용: " .. table.concat(slots, ", ")
+        end
+    end
+    lines[#lines + 1] = "{bright_cyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}"
+    ctx:send(table.concat(lines, "\r\n"))
+end)
+
+-- ══════════════════════════════════════════════════════════════════
+-- 묘사 (description) — 자기소개 설정
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("묘사", function(ctx, args)
+    if not args or args == "" then
+        local desc = ctx:get_player_data("description") or ""
+        if desc == "" then
+            ctx:send("묘사가 설정되어 있지 않습니다.")
+            ctx:send("사용법: 묘사 <자기소개 내용>")
+        else
+            ctx:send("{bright_cyan}현재 묘사:{reset}\r\n" .. desc)
+        end
+        return
+    end
+    ctx:set_player_data("description", args)
+    ctx:send("{green}묘사가 설정되었습니다.{reset}")
+end)

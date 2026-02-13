@@ -140,3 +140,12 @@ register_command("서열", function(ctx, args)
     ctx:send("  서열 hp      — HP 순위")
     ctx:send("  서열 martial — 무술/숙련도 순위")
 end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 무술대회서열 (view_musul_rank) — 무술 랭킹 보기 (별칭)
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("무술대회서열", function(ctx, args)
+    ctx:call_command("서열", "martial")
+end)

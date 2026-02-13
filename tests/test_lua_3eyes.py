@@ -1505,3 +1505,285 @@ class TestPhase1CombatOriginal:
         await eng._lua_combat_round()
         msgs = _get_sent(session)
         assert any("죽었습니다" in m for m in msgs)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Phase: New Batch Commands (방향, 소셜, 별칭, 핵심, KYK, 편지, DM)
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestBatchEmotes:
+    """Batch 2: 소셜/감정 명령어."""
+
+    @pytest.mark.asyncio
+    async def test_emote_no_target(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        eng.world.rooms[100].characters = [ch]
+        await eng.process_command(session, "미소")
+        msgs = _get_sent(session)
+        assert any("미소" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_emote_with_target(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        mob = _npc(room_vnum=100)
+        session = _make_session(eng, ch)
+        eng.world.rooms[100].characters = [ch, mob]
+        await eng.process_command(session, "절 고블린")
+        msgs = _get_sent(session)
+        assert any("절" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_emote_target_only_no_args(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        eng.world.rooms[100].characters = [ch]
+        await eng.process_command(session, "안아")
+        msgs = _get_sent(session)
+        assert any("누구" in m for m in msgs)
+
+
+class TestBatchAliases:
+    """Batch 3: 단순 별칭."""
+
+    @pytest.mark.asyncio
+    async def test_bwa_alias(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        eng.world.rooms[100].characters = [ch]
+        await eng.process_command(session, "봐")
+        msgs = _get_sent(session)
+        assert any("광장" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_news_alias(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        await eng.process_command(session, "뉴스")
+        msgs = _get_sent(session)
+        assert any("3eyes" in m or "GenOS" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_title_delete(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        session.player_data["title"] = "용사"
+        await eng.process_command(session, "칭호삭제")
+        assert session.player_data.get("title") == ""
+
+
+class TestBatchCoreCommands:
+    """Batch 4: 핵심 미구현 명령어."""
+
+    @pytest.mark.asyncio
+    async def test_ignore_add_remove(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        # 추가
+        await eng.process_command(session, "듣기거부 badplayer")
+        msgs = _get_sent(session)
+        assert any("수신거부합니다" in m for m in msgs)
+        # 해제 (같은 명령 재실행)
+        session.send_line.reset_mock()
+        await eng.process_command(session, "듣기거부 badplayer")
+        msgs = _get_sent(session)
+        assert any("해제했습니다" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_clear_cast(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        ch.extensions["casting"] = True
+        session = _make_session(eng, ch)
+        await eng.process_command(session, "주문해제")
+        msgs = _get_sent(session)
+        assert any("취소" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_description_set(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        await eng.process_command(session, "묘사 용감한 전사입니다.")
+        assert session.player_data.get("description") == "용감한 전사입니다."
+
+    @pytest.mark.asyncio
+    async def test_item_appraise(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        proto = ItemProto(
+            vnum=101, keywords="검 sword", short_desc="강철검", long_desc="",
+            item_type="weapon", wear_slots=["wield"], weight=5, cost=1000,
+            values={"damage": "2d6"}, flags=[], scripts=[], ext={},
+        )
+        item = ObjInstance(id=201, proto=proto, room_vnum=-1)
+        ch.inventory = [item]
+        await eng.process_command(session, "감정 검")
+        msgs = _get_sent(session)
+        assert any("감정" in m for m in msgs)
+
+
+class TestBatchKYK:
+    """Batch 5: KYK 특수 시스템."""
+
+    @pytest.mark.asyncio
+    async def test_stat_upgrade(self):
+        eng = _make_engine()
+        ch = _player(level=50, gold=300000, room_vnum=100)
+        session = _make_session(eng, ch)
+        await eng.process_command(session, "향상 str")
+        msgs = _get_sent(session)
+        assert any("향상되었습니다" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_pray_cleric(self):
+        eng = _make_engine()
+        ch = _player(level=30, class_id=3, mana=100, hp=50, max_hp=200, room_vnum=100)
+        session = _make_session(eng, ch)
+        session.player_data["cooldowns"] = {}
+        old_hp = ch.hp
+        await eng.process_command(session, "신원법")
+        assert ch.hp > old_hp
+
+    @pytest.mark.asyncio
+    async def test_memo_save(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        await eng.process_command(session, "메모 중요한내용")
+        msgs = _get_sent(session)
+        assert any("저장되었습니다" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_exp_transfer(self):
+        eng = _make_engine()
+        ch = _player(level=50, exp=10000, room_vnum=100)
+        session = _make_session(eng, ch)
+        # 대상 없이 테스트 - 메시지만 확인
+        await eng.process_command(session, "경험치전수 없는사람 1000")
+        msgs = _get_sent(session)
+        assert any("없" in m or "전수" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_item_destroy(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        proto = ItemProto(
+            vnum=102, keywords="쓰레기 trash", short_desc="쓰레기",
+            long_desc="", item_type="misc", wear_slots=[], weight=1, cost=0,
+            values={}, flags=[], scripts=[], ext={},
+        )
+        item = ObjInstance(id=202, proto=proto, room_vnum=-1)
+        ch.inventory = [item]
+        await eng.process_command(session, "긁어 쓰레기")
+        msgs = _get_sent(session)
+        assert any("긁어" in m or "부숩" in m for m in msgs)
+
+
+class TestBatchMail:
+    """Batch 7: 편지 시스템."""
+
+    @pytest.mark.asyncio
+    async def test_mail_send_and_read(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        # 편지 보내기
+        await eng.process_command(session, "편지보내기 친구 인사 안녕하세요!")
+        msgs = _get_sent(session)
+        assert any("편지" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_mail_read_empty(self):
+        eng = _make_engine()
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        import lupa
+        lupa.LuaRuntime().execute("_G._3eyes_mailbox = nil")
+        await eng.process_command(session, "편지받기")
+        msgs = _get_sent(session)
+        assert any("없습니다" in m for m in msgs)
+
+
+class TestBatchDMCommands:
+    """Batch 6: DM 관리 명령어."""
+
+    @pytest.mark.asyncio
+    async def test_dm_alias_echo(self):
+        eng = _make_engine()
+        ch = _player(level=100, class_id=16, room_vnum=100)  # DM
+        session = _make_session(eng, ch)
+        eng.sessions["s1"] = session  # send_all needs session in sessions
+        await eng.process_command(session, "*공지 테스트메시지")
+        msgs = _get_sent(session)
+        assert any("테스트메시지" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_dm_system(self):
+        eng = _make_engine()
+        ch = _player(level=100, class_id=16, room_vnum=100)
+        session = _make_session(eng, ch)
+        await eng.process_command(session, "*dm_system")
+        msgs = _get_sent(session)
+        assert any("Lua" in m or "시스템" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_dm_denied_for_non_dm(self):
+        eng = _make_engine()
+        ch = _player(level=50, class_id=4, room_vnum=100)
+        session = _make_session(eng, ch)
+        await eng.process_command(session, "*순간이동 999")
+        msgs = _get_sent(session)
+        assert any("관리자" in m for m in msgs)
+
+
+class TestBatchMovement:
+    """Batch 1: 방향 이동 별칭 & 나가/나가는길."""
+
+    @pytest.mark.asyncio
+    async def test_exit_list(self):
+        eng = _make_engine()
+        w = eng.world
+        # Add an exit to room 100
+        room100 = w.rooms[100]
+        room100.proto.exits.append(
+            Exit(direction=0, to_vnum=1, keywords="", flags=[])
+        )
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        w.rooms[100].characters = [ch]
+        await eng.process_command(session, "나가는길")
+        msgs = _get_sent(session)
+        assert any("북" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_leave_command(self):
+        eng = _make_engine()
+        w = eng.world
+        room100 = w.rooms[100]
+        room100.proto.exits.append(
+            Exit(direction=2, to_vnum=1, keywords="", flags=[])
+        )
+        ch = _player(room_vnum=100)
+        session = _make_session(eng, ch)
+        w.rooms[100].characters = [ch]
+        w.rooms[1].characters = []
+        await eng.process_command(session, "나가")
+        assert ch.room_vnum == 1
+
+    def test_dir_map_has_diagonals(self):
+        from core.engine import DIR_NAMES_KR_MAP
+        assert DIR_NAMES_KR_MAP["남동"] == 6
+        assert DIR_NAMES_KR_MAP["북서"] == 9
+        assert DIR_NAMES_KR_MAP["밑"] == 5
+        assert DIR_NAMES_KR_MAP["8"] == 0  # numpad north

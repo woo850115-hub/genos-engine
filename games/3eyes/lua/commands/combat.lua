@@ -155,3 +155,176 @@ end
 
 register_command("찾아", do_search)
 register_command("검색", function(ctx, args) ctx:call_command("찾아", args or "") end)
+
+-- ── 주문해제 (clear_cast) — 현재 주문 취소 ────────────────────
+register_command("주문해제", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    pcall(function()
+        ch.extensions.casting = nil
+        ch.extensions.cast_target = nil
+        ch.extensions.cast_spell = nil
+    end)
+    ctx:send("현재 주문 시전을 취소합니다.")
+end)
+
+-- ── 해제 (clear) — 전투/주문 상태 해제 ────────────────────────
+register_command("해제", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    if ch.fighting then
+        ctx:send("전투 중에는 해제할 수 없습니다!")
+        return
+    end
+    pcall(function()
+        ch.extensions.casting = nil
+        ch.extensions.cast_target = nil
+        ch.extensions.cast_spell = nil
+    end)
+    ctx:send("모든 행동 대기를 해제합니다.")
+end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 일격필살 (oneshot_kill) — Invincible+ 전용 즉사기
+-- 원본: kyk8.c oneshot_kill() — 대상 HP 비례 확률
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("일격필살", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    local cls = ch.class_id or CLASS_FIGHTER
+    if cls < CLASS_INVINCIBLE then
+        ctx:send("{yellow}무적자 이상만 사용할 수 있습니다.{reset}")
+        return
+    end
+    local target = ch.fighting
+    if not target then
+        if not args or args == "" then
+            ctx:send("누구에게 사용하시겠습니까?")
+            return
+        end
+        target = ctx:find_char(args)
+    end
+    if not target then
+        ctx:send("여기에 그런 것은 없군요")
+        return
+    end
+    if ch.move < 50 then
+        ctx:send("움직일 체력이 부족합니다.")
+        return
+    end
+    local cd = ctx:check_cooldown(24)
+    if cd > 0 then
+        ctx:send("{yellow}아직 사용할 수 없습니다. (" .. cd .. "초){reset}")
+        return
+    end
+    ctx:add_move(-50)
+    ctx:set_cooldown(24, 120)
+    -- 확률: 레벨 차이 + 스탯
+    local chance = 15 + math.floor(ch.level / 5) - math.floor((target.level or 1) / 10)
+    if math.random(1, 100) <= chance then
+        local dmg = target.hp  -- 즉사
+        ctx:send("{bright_red}일격필살!! " .. target.name .. "에게 치명타! [" .. dmg .. "]{reset}")
+        ctx:send_room("{bright_red}" .. ch.name .. "이(가) " .. target.name .. "에게 일격필살!{reset}")
+        ctx:damage(target, dmg)
+    else
+        local dmg = math.floor(ch.level * 3 + te_stat(ch, "str", 13) * 5)
+        ctx:send("{bright_yellow}일격필살 실패! 하지만 " .. dmg .. "의 피해를 줍니다.{reset}")
+        ctx:damage(target, dmg)
+    end
+    if not ch.fighting then ctx:start_combat(target) end
+end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 그림자공격 (shadow_attack) — 그림자 추가 공격 발동
+-- 원본: kyk8.c shadow_attack()
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("그림자공격", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    if not ch.fighting then
+        ctx:send("전투 중이 아닙니다.")
+        return
+    end
+    if ch.mana < 20 then
+        ctx:send("마력이 부족합니다.")
+        return
+    end
+    local cd = ctx:check_cooldown(25)
+    if cd > 0 then
+        ctx:send("{yellow}아직 사용할 수 없습니다. (" .. cd .. "초){reset}")
+        return
+    end
+    ch.mana = ch.mana - 20
+    ctx:set_cooldown(25, 15)
+    local target = ch.fighting
+    local dmg = math.floor(ch.level * 1.5 + te_stat(ch, "dex", 13) * 2)
+    ctx:send("{bright_white}그림자가 " .. target.name .. "을(를) 공격합니다! [" .. dmg .. "]{reset}")
+    ctx:send_room(ch.name .. "의 그림자가 " .. target.name .. "을(를) 공격합니다!")
+    ctx:damage(target, dmg)
+end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 그림자대기 (shadow_wait) — 그림자 공격 대기 모드 토글
+-- 원본: kyk8.c shadow_wait()
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("그림자대기", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    local shadow_mode = false
+    pcall(function() shadow_mode = ch.extensions.shadow_mode end)
+    if shadow_mode then
+        pcall(function() ch.extensions.shadow_mode = false end)
+        ctx:send("{white}그림자 대기 모드를 해제합니다.{reset}")
+    else
+        pcall(function() ch.extensions.shadow_mode = true end)
+        ctx:send("{bright_white}그림자 대기 모드를 활성화합니다.{reset}")
+    end
+end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 던져 (throw) — 투척 아이템 사용
+-- 원본: command3.c throw()
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("던져", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    if not args or args == "" then
+        ctx:send("무엇을 던지시겠습니까?")
+        return
+    end
+    local parts = {}
+    for w in args:gmatch("%S+") do table.insert(parts, w) end
+    local item_kw = parts[1]
+    local target_name = parts[2]
+
+    local item = ctx:find_inv_item(item_kw)
+    if not item then
+        ctx:send("그런 물건을 가지고 있지 않습니다.")
+        return
+    end
+    local target = ch.fighting
+    if target_name and target_name ~= "" then
+        target = ctx:find_char(target_name)
+    end
+    if not target then
+        ctx:send("누구에게 던지시겠습니까?")
+        return
+    end
+    -- Damage based on item cost + str
+    local cost = 0
+    pcall(function() cost = item.proto.cost or 0 end)
+    local dmg = math.max(1, math.floor(cost / 100) + te_stat(ch, "str", 13))
+    ctx:obj_from_char(item)
+    ctx:send("{bright_yellow}" .. item.name .. "을(를) " .. target.name .. "에게 던집니다! [" .. dmg .. "]{reset}")
+    ctx:send_room(ch.name .. "이(가) " .. item.name .. "을(를) " .. target.name .. "에게 던집니다!")
+    ctx:damage(target, dmg)
+    if not ch.fighting then ctx:start_combat(target) end
+end)

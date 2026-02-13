@@ -414,9 +414,11 @@ class TestKoreanCommandE2E:
         eng = _make_engine()
         session = _make_player_session(eng)
 
-        await eng.process_command(session, "ㅂ")  # → 봐 → look
+        # ㅂ is now a direction (north) in DIR_NAMES_KR_MAP
+        # Test ㄱ → 공격 (command choseong still works)
+        await eng.process_command(session, "ㄱ")
         calls = [str(c) for c in session.send_line.call_args_list]
-        assert any("광장" in c for c in calls)
+        assert any("공격" in c or "누구" in c for c in calls)
 
     @pytest.mark.asyncio
     async def test_korean_verb_stem(self):

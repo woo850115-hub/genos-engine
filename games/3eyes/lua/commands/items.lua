@@ -431,3 +431,59 @@ register_command("쥐어", function(ctx, args)
     end
 end)
 register_command("잡아", function(ctx, args) ctx:call_command("쥐어", args or "") end)
+
+-- ── 사용 / zap (use) — 지팡이/막대 아이템 사용 (stored spell) ──
+local function do_use(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    if not args or args == "" then
+        ctx:send("무엇을 사용하시겠습니까?")
+        return
+    end
+    local parts = split(args)
+    local item_kw = parts[1]
+    local target_name = parts[2]
+
+    local item = ctx:find_inv_item(item_kw) or ctx:find_equip_item(item_kw)
+    if not item then
+        ctx:send("그런 물건을 가지고 있지 않습니다.")
+        return
+    end
+    local itype = item.proto.item_type or ""
+    if itype ~= "wand" and itype ~= "staff" and itype ~= "scroll" then
+        ctx:send("그것은 사용할 수 있는 종류가 아닙니다.")
+        return
+    end
+    -- Get charges/spell
+    local vals = item.proto.values or {}
+    local charges = vals.charges or vals[2] or 1
+    if type(charges) == "string" then charges = tonumber(charges) or 0 end
+    if charges <= 0 then
+        ctx:send("더 이상 사용할 수 없습니다. (충전 소모)")
+        return
+    end
+    local spell_id = vals.spell1 or vals.spell or vals[3]
+    if spell_id then spell_id = tonumber(spell_id) end
+    -- Find target
+    local target = ch
+    if target_name and target_name ~= "" then
+        target = ctx:find_char(target_name) or ch
+    elseif ch.fighting then
+        target = ch.fighting
+    end
+    -- Apply spell
+    if spell_id and spell_id > 0 then
+        ctx:apply_spell_buff(target, spell_id, 10 + ch.level)
+    end
+    -- Reduce charges
+    pcall(function()
+        local new_charges = charges - 1
+        if vals.charges then vals.charges = new_charges
+        elseif vals[2] then vals[2] = new_charges end
+    end)
+    ctx:send("당신은 " .. item.name .. "을(를) 사용합니다!")
+    ctx:send_room(ch.name .. "이(가) " .. item.name .. "을(를) 사용합니다!")
+end
+
+register_command("사용", do_use)
+register_command("zap", do_use)

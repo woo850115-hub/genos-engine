@@ -134,6 +134,54 @@ end
 register_command("가", do_enter)
 register_command("들어가", function(ctx, args) ctx:call_command("가", args or "") end)
 
+-- ── 나가 (leave) — 방 나가기 (첫 번째 열린 출구로) ─────────────
+register_command("나가", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    if ch.fighting then
+        ctx:send("전투 중에는 나갈 수 없습니다!")
+        return
+    end
+    local exits = ctx:get_exits()
+    for i = 1, #exits do
+        local ex = exits[i]
+        if ex.direction < 10 then
+            local room = ctx:get_room()
+            if room and not room:is_door_closed(ex.direction) then
+                local dir_name = DIR_NAMES[ex.direction + 1] or "?"
+                ctx:send_room(ch.name .. "이(가) " .. dir_name .. "쪽으로 나갑니다.")
+                ctx:move_to(ex.to_room)
+                ctx:send("당신은 " .. dir_name .. "쪽으로 나갑니다.")
+                ctx:defer_look()
+                return
+            end
+        end
+    end
+    ctx:send("나갈 수 있는 출구가 없습니다.")
+end)
+register_command("밖", function(ctx, args) ctx:call_command("나가", args or "") end)
+
+-- ── 나가는길 (exits) — 출구 목록 표시 ──────────────────────────
+register_command("나가는길", function(ctx, args)
+    local exits = ctx:get_exits()
+    if #exits == 0 then
+        ctx:send("출구가 없습니다.")
+        return
+    end
+    local dir_full = {"북쪽","동쪽","남쪽","서쪽","위","아래","남동","남서","북동","북서"}
+    local lines = {"{bright_cyan}━━━ 나가는 길 ━━━{reset}"}
+    for i = 1, #exits do
+        local ex = exits[i]
+        local dname = dir_full[ex.direction + 1] or ("방향" .. ex.direction)
+        local room = ctx:get_room()
+        local status = ""
+        if room and room:is_door_closed(ex.direction) then status = " {red}(잠김){reset}" end
+        lines[#lines + 1] = "  " .. dname .. status
+    end
+    lines[#lines + 1] = "{bright_cyan}━━━━━━━━━━━━━━━━{reset}"
+    ctx:send(table.concat(lines, "\r\n"))
+end)
+
 -- ── 칭호 (cmdno=48, title) ────────────────────────────────────
 register_command("칭호", function(ctx, args)
     if not args or args == "" then

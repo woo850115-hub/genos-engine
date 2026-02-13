@@ -172,3 +172,133 @@ end)
 
 -- ── version — 버젼 별칭 (원본 영어 별칭) ────────────────────────
 register_command("version", function(ctx, args) ctx:call_command("버젼", args or "") end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 경험치전수 (trans_exp) — 다른 플레이어에게 경험치 전달
+-- 원본: kyk3.c trans_exp()
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("경험치전수", function(ctx, args)
+    if not args or args == "" then
+        ctx:send("사용법: 경험치전수 <대상> <양>")
+        return
+    end
+    local ch = ctx.char
+    local target_name, amount_str = args:match("^(%S+)%s+(%d+)$")
+    if not target_name or not amount_str then
+        ctx:send("사용법: 경험치전수 <대상> <양>")
+        return
+    end
+    local amount = tonumber(amount_str) or 0
+    if amount <= 0 then
+        ctx:send("유효한 경험치 양을 입력하세요.")
+        return
+    end
+    if ch.experience < amount then
+        ctx:send("{yellow}경험치가 부족합니다. (현재: " .. ch.experience .. "){reset}")
+        return
+    end
+    local target = ctx:find_player(target_name)
+    if not target then
+        ctx:send("그런 플레이어를 찾을 수 없습니다.")
+        return
+    end
+    if target == ch then
+        ctx:send("자기 자신에게는 전수할 수 없습니다.")
+        return
+    end
+    -- 10% 수수료
+    local fee = math.floor(amount * 0.1)
+    local received = amount - fee
+    ch.experience = ch.experience - amount
+    target.experience = (target.experience or 0) + received
+    ctx:send("{green}" .. target.name .. "에게 경험치 " .. received ..
+        "을 전수합니다. (수수료: " .. fee .. "){reset}")
+    ctx:send_to(target, "{green}" .. ch.name .. "이(가) 당신에게 경험치 " ..
+        received .. "을 전수합니다!{reset}")
+end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 메모 (notepad) — 개인 메모장
+-- player_data: "notes" = string
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("메모", function(ctx, args)
+    if not args or args == "" then
+        local notes = ctx:get_player_data("notes") or ""
+        if notes == "" then
+            ctx:send("메모가 비어 있습니다.")
+            ctx:send("사용법: 메모 <내용>  또는  메모 삭제")
+        else
+            ctx:send("{bright_cyan}━━ 메모 ━━{reset}")
+            ctx:send(notes)
+            ctx:send("{bright_cyan}━━━━━━━━━━{reset}")
+        end
+        return
+    end
+    if args == "삭제" or args == "지워" then
+        ctx:set_player_data("notes", "")
+        ctx:send("{green}메모를 삭제했습니다.{reset}")
+        return
+    end
+    -- 기존 메모에 추가
+    local notes = ctx:get_player_data("notes") or ""
+    if notes ~= "" then notes = notes .. "\r\n" end
+    notes = notes .. args
+    ctx:set_player_data("notes", notes)
+    ctx:send("{green}메모가 저장되었습니다.{reset}")
+end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 투체변신술 (up_dmg) — 전투력 강화 변신
+-- 원본: kyk8.c up_dmg()
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("투체변신술", function(ctx, args)
+    local ch = ctx.char
+    if not ch then return end
+    if ch.mana < 40 then
+        ctx:send("마력이 부족합니다.")
+        return
+    end
+    local cd = ctx:check_cooldown(26)
+    if cd > 0 then
+        ctx:send("{yellow}아직 사용할 수 없습니다. (" .. cd .. "초){reset}")
+        return
+    end
+    ch.mana = ch.mana - 40
+    local bonus = math.floor(ch.level / 5) + te_bonus(te_stat(ch, "str", 13))
+    pcall(function()
+        ch.extensions.bonus_power = (ch.extensions.bonus_power or 0) + bonus
+        ch.extensions.transform_rounds = 20
+    end)
+    ctx:set_flag(PUPDMG)
+    ctx:set_cooldown(26, 180)
+    ctx:send("{bright_red}투체변신! 전투력 +" .. bonus .. " (20라운드){reset}")
+    ctx:send_room("{bright_red}" .. ch.name .. "이(가) 몸이 변합니다!{reset}")
+end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 긁어 (burn/scratch) — 아이템 파괴
+-- 원본: kyk3.c burn()
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("긁어", function(ctx, args)
+    if not args or args == "" then
+        ctx:send("무엇을 긁으시겠습니까?")
+        return
+    end
+    local ch = ctx.char
+    local item = ctx:find_inv_item(args)
+    if not item then
+        ctx:send("그런 물건을 가지고 있지 않습니다.")
+        return
+    end
+    ctx:obj_from_char(item)
+    ctx:send("{yellow}" .. item.name .. "을(를) 긁어 부숩니다.{reset}")
+    ctx:send_room(ch.name .. "이(가) " .. item.name .. "을(를) 파괴합니다.")
+end)

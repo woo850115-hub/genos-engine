@@ -340,3 +340,40 @@ end)
 register_command("기부자명단", function(ctx, args)
     ctx:send("현재 준비 중입니다.")
 end)
+
+
+-- ══════════════════════════════════════════════════════════════════
+-- 선전포고 (call_war) — 패거리 전쟁 선포
+-- 원본: kyk6.c call_war()
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("선전포고", function(ctx, args)
+    if not args or args == "" then
+        ctx:send("사용법: 선전포고 <패거리이름>")
+        return
+    end
+    local ch = ctx.char
+    local fid = get_player_family_id(ctx)
+    if not fid or fid <= 0 then
+        ctx:send("가족에 소속되어 있지 않습니다.")
+        return
+    end
+    local fam = get_family(fid)
+    if not fam or fam.leader ~= ch.name then
+        ctx:send("{yellow}가장만 선전포고를 할 수 있습니다.{reset}")
+        return
+    end
+    local target_fid, target_fam = find_family_by_name(args)
+    if not target_fam then
+        ctx:send("그런 가족을 찾을 수 없습니다.")
+        return
+    end
+    if target_fid == fid then
+        ctx:send("자기 가족에게 선전포고할 수 없습니다.")
+        return
+    end
+    ctx:send_all("{bright_red}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}")
+    ctx:send_all("{bright_red}  '" .. fam.name .. "' 가족이 '" ..
+        target_fam.name .. "' 가족에게 선전포고합니다!{reset}")
+    ctx:send_all("{bright_red}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{reset}")
+end)

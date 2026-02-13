@@ -150,3 +150,26 @@ register_command("귀환", function(ctx, args)
     ctx:defer_look()
 end)
 register_command("recall", nil)  -- common 영어 제거
+
+-- ══════════════════════════════════════════════════════════════════
+-- 한국어/영문 별칭 등록 (원본 cmdlist 기반)
+-- ══════════════════════════════════════════════════════════════════
+
+register_command("봐", function(ctx, args) ctx:call_command("look", args or "") end)
+register_command("보다", function(ctx, args) ctx:call_command("look", args or "") end)
+register_command("사", function(ctx, args) ctx:call_command("구매", args or "") end)
+register_command("저장", function(ctx, args) ctx:call_command("save", args or "") end)
+register_command("전수", function(ctx, args) ctx:call_command("배워", args or "") end)
+register_command("귀", function(ctx, args) ctx:call_command("귀환", args or "") end)
+register_command("칭호삭제", function(ctx, args)
+    ctx:set_player_data("title", "")
+    ctx:send("칭호가 삭제되었습니다.")
+end)
+register_command("소각", function(ctx, args) ctx:call_command("버려", args or "") end)
+register_command("태워", function(ctx, args) ctx:call_command("버려", args or "") end)
+register_command("받아", function(ctx, args) ctx:call_command("출금", args or "") end)
+register_command("뉴스", function(ctx, args) ctx:call_command("버젼", args or "") end)
+register_command("news", function(ctx, args) ctx:call_command("버젼", args or "") end)
+register_command("score", function(ctx, args) ctx:call_command("점수", args or "") end)
+register_command("inventory", function(ctx, args) ctx:call_command("소지품", args or "") end)
+register_command("equipment", function(ctx, args) ctx:call_command("장비", args or "") end)

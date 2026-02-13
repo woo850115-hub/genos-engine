@@ -33,15 +33,22 @@ DIR_ABBREV = {"n": 0, "e": 1, "s": 2, "w": 3, "u": 4, "d": 5}
 DIR_NAMES_KR_MAP = {
     "북": 0, "북쪽": 0, "동": 1, "동쪽": 1, "남": 2, "남쪽": 2,
     "서": 3, "서쪽": 3, "위": 4, "위쪽": 4, "아래": 5, "아래쪽": 5,
+    "밑": 5,
+    # 대각선 (3eyes 10-dir exits)
+    "남동": 6, "남서": 7, "북동": 8, "북서": 9,
+    # 초성 약어 — 방향
+    "ㅂ": 0, "ㄷ": 1, "ㄴ": 2, "ㅅ": 3, "ㅇ": 4, "ㅁ": 5,
+    "ㅂㄷ": 8, "ㅂㅅ": 9, "ㄴㄷ": 6, "ㄴㅅ": 7,
+    # 숫자패드
+    "8": 0, "6": 1, "2": 2, "4": 3, "9": 8, "3": 6,
 }
 REVERSE_DIRS = [2, 3, 0, 1, 5, 4]  # north↔south, east↔west, up↔down
 
 # ── Korean Choseong (초성) abbreviation table ────────────────────
 
 CHOSEONG_MAP: dict[str, str] = {
-    "ㄱ": "공격", "ㄴ": "누구", "ㄷ": "도움", "ㄹ": "look",
-    "ㅁ": "말", "ㅂ": "봐", "ㅅ": "소지품", "ㅈ": "저장",
-    "ㅊ": "착용", "ㅎ": "help",
+    "ㄱ": "공격", "ㄹ": "look",
+    "ㅈ": "저장", "ㅊ": "착용", "ㅎ": "help",
 }
 
 # ── Korean verb → English action mapping (default, extensible by plugin) ──
@@ -732,7 +739,7 @@ class Engine:
             except ValueError:
                 pass
 
-        if dir_idx is None or dir_idx < 0 or dir_idx > 5:
+        if dir_idx is None or dir_idx < 0 or dir_idx > 9:
             await session.send_line("그쪽으로는 갈 수 없습니다.")
             return
 

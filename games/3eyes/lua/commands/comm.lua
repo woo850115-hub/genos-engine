@@ -424,3 +424,82 @@ register_command("그룹", function(ctx, args)
 end)
 
 register_command("무리", function(ctx, args) ctx:call_command("그룹", args or "") end)
+
+
+-- ================================================================
+-- 내보내 (lose/unfollow) — 따라오는 자를 내보냄
+-- 원본: command5.c lose()
+-- ================================================================
+register_command("내보내", function(ctx, args)
+    if not args or args == "" then
+        ctx:send("누구를 내보내시겠습니까?")
+        return
+    end
+    local ch = ctx.char
+    local followers = ctx:get_followers()
+    if not followers then
+        ctx:send("따라오는 사람이 없습니다.")
+        return
+    end
+    local target_name = args:lower()
+    for i = 0, 50 do
+        local ok, m = pcall(function() return followers[i] end)
+        if not ok or not m then break end
+        if m.name:lower():find(target_name, 1, true) then
+            ctx:unfollow_target(m)
+            ctx:send(m.name .. "을(를) 내보냈습니다.")
+            pcall(function() ctx:send_to(m, ch.name .. "이(가) 당신을 내보냈습니다.") end)
+            return
+        end
+    end
+    ctx:send("그런 사람이 따라오고 있지 않습니다.")
+end)
+
+
+-- ================================================================
+-- 듣기거부 / 수신거부 (ignore) — 특정 플레이어 메시지 차단
+-- 원본: comm12.c ignore()
+-- player_data: "ignore_list" = {name1, name2, ...}
+-- ================================================================
+local function do_ignore(ctx, args)
+    local ignore_list = ctx:get_player_data("ignore_list") or {}
+    if type(ignore_list) ~= "table" then ignore_list = {} end
+
+    if not args or args == "" then
+        -- 목록 표시
+        local lines = {"{bright_cyan}━━ 수신거부 목록 ━━{reset}"}
+        local count = 0
+        for _, name in ipairs(ignore_list) do
+            lines[#lines + 1] = "  " .. name
+            count = count + 1
+        end
+        if count == 0 then
+            lines[#lines + 1] = "  수신거부 대상이 없습니다."
+        end
+        lines[#lines + 1] = "{bright_cyan}━━━━━━━━━━━━━━━━━━{reset}"
+        ctx:send(table.concat(lines, "\r\n"))
+        return
+    end
+
+    local target_name = args
+    -- 이미 있으면 해제
+    for i, name in ipairs(ignore_list) do
+        if name:lower() == target_name:lower() then
+            table.remove(ignore_list, i)
+            ctx:set_player_data("ignore_list", ignore_list)
+            ctx:send("{green}" .. target_name .. "의 수신거부를 해제했습니다.{reset}")
+            return
+        end
+    end
+    -- 추가
+    if #ignore_list >= 20 then
+        ctx:send("{yellow}수신거부 목록이 가득 찼습니다. (최대 20명){reset}")
+        return
+    end
+    ignore_list[#ignore_list + 1] = target_name
+    ctx:set_player_data("ignore_list", ignore_list)
+    ctx:send("{green}" .. target_name .. "을(를) 수신거부합니다.{reset}")
+end
+
+register_command("듣기거부", do_ignore)
+register_command("수신거부", function(ctx, args) ctx:call_command("듣기거부", args or "") end)
