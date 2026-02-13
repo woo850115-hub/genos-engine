@@ -48,8 +48,13 @@ class Database:
             self._pool = None
             log.info("Database pool closed")
 
-    async def auto_init(self, data_dir: Path) -> None:
-        """Auto-initialize DB if rooms table doesn't exist or is empty."""
+    async def auto_init(self, data_dir: Path, *, force: bool = False) -> None:
+        """Auto-initialize DB if rooms table doesn't exist or is empty.
+
+        Args:
+            force: Drop and recreate schema even if data exists.
+                   Set REINIT_DB=1 environment variable to trigger.
+        """
         async with self.pool.acquire() as conn:
             exists = await conn.fetchval(
                 "SELECT EXISTS("
@@ -58,16 +63,23 @@ class Database:
                 ")"
             )
             if exists:
-                count = await conn.fetchval("SELECT COUNT(*) FROM rooms")
-                if count and count > 0:
-                    log.info("Database already initialized (%d rooms)", count)
-                    return
-                # Tables exist but empty (partial init) — drop and recreate
-                log.warning("Tables exist but rooms empty, dropping schema...")
-                await conn.execute(
-                    "DROP SCHEMA public CASCADE; "
-                    "CREATE SCHEMA public;"
-                )
+                if force:
+                    log.warning("Force reinit requested — dropping schema...")
+                    await conn.execute(
+                        "DROP SCHEMA public CASCADE; "
+                        "CREATE SCHEMA public;"
+                    )
+                else:
+                    count = await conn.fetchval("SELECT COUNT(*) FROM rooms")
+                    if count and count > 0:
+                        log.info("Database already initialized (%d rooms)", count)
+                        return
+                    # Tables exist but empty (partial init) — drop and recreate
+                    log.warning("Tables exist but rooms empty, dropping schema...")
+                    await conn.execute(
+                        "DROP SCHEMA public CASCADE; "
+                        "CREATE SCHEMA public;"
+                    )
 
             log.info("Initializing database from schema + seed data...")
             schema_path = data_dir / "sql" / "schema.sql"
@@ -209,6 +221,9 @@ class Database:
                     room_vnum     INTEGER NOT NULL DEFAULT 0,
                     org_id        INTEGER NOT NULL DEFAULT 0,
                     org_rank      INTEGER NOT NULL DEFAULT 0,
+                    practices     INTEGER NOT NULL DEFAULT 0,
+                    toggles       JSONB NOT NULL DEFAULT '{}',
+                    prompt        TEXT NOT NULL DEFAULT '',
                     ext           JSONB NOT NULL DEFAULT '{}',
                     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     last_login    TIMESTAMPTZ

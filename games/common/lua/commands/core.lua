@@ -147,6 +147,7 @@ register_command("look", function(ctx, args)
     -- Exits
     local exits = ctx:get_exits()
     local exit_names = {}
+    local named_exits = {}
     for i = 1, #exits do
         local ex = exits[i]
         if ex.direction < 6 then
@@ -155,10 +156,20 @@ register_command("look", function(ctx, args)
                 dir_name = "(" .. dir_name .. ")"
             end
             table.insert(exit_names, dir_name)
+        elseif ex.keywords and ex.keywords ~= "" then
+            table.insert(named_exits, ex.keywords)
         end
     end
+    local exit_str = ""
     if #exit_names > 0 then
-        ctx:send("{green}[ 출구: " .. table.concat(exit_names, " ") .. " ]{reset}")
+        exit_str = table.concat(exit_names, " ")
+    end
+    if #named_exits > 0 then
+        if exit_str ~= "" then exit_str = exit_str .. " | " end
+        exit_str = exit_str .. table.concat(named_exits, " ")
+    end
+    if exit_str ~= "" then
+        ctx:send("{green}[ 출구: " .. exit_str .. " ]{reset}")
     end
 
     -- Objects in room

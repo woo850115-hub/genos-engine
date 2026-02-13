@@ -150,9 +150,10 @@ class Engine:
         # 1. Connect to DB
         await self.db.connect()
 
-        # 2. Auto-init DB
+        # 2. Auto-init DB (REINIT_DB=1 forces drop+recreate from seed_data.sql)
         data_dir = BASE_DIR / "data" / self.game_name
-        await self.db.auto_init(data_dir)
+        force_reinit = os.environ.get("REINIT_DB", "").strip() in ("1", "true", "yes")
+        await self.db.auto_init(data_dir, force=force_reinit)
         await self.db.ensure_players_table()
 
         # 3. Load world
@@ -170,9 +171,9 @@ class Engine:
         # 6. Load Lua runtime
         self.lua = LuaCommandRuntime(self)
         await self.db.ensure_lua_scripts_table()
-        lua_count = await self.db.lua_scripts_count()
-        if lua_count == 0:
-            seeded = await self.lua.seed_from_files(self.db, self.game_name)
+        # Always reseed from files (upsert) so updated/new scripts are picked up
+        seeded = await self.lua.seed_from_files(self.db, self.game_name)
+        if seeded:
             log.info("Lua scripts seeded from files: %d", seeded)
         loaded = await self.lua.load_from_db(self.db, self.game_name)
         self.lua.register_all_commands()
@@ -604,6 +605,19 @@ class Engine:
                 await self._do_social(session, token, " ".join(parts[1:]))
                 return
 
+        # 8. Named exit — check if input matches any exit keyword in current room
+        if handler is None and char:
+            if char.fighting:
+                pass  # Can't move through named exits while fighting
+            else:
+                room = self.world.get_room(char.room_vnum)
+                if room:
+                    input_lower = text.strip()
+                    for ex in room.proto.exits:
+                        if ex.direction >= 6 and ex.keywords == input_lower:
+                            await self._do_named_move(session, ex)
+                            return
+
         if handler is None:
             await session.send_line("무슨 말인지 모르겠습니다.")
             return
@@ -623,17 +637,17 @@ class Engine:
         if token in DIR_ABBREV or token in DIRS or token in DIR_NAMES_KR_MAP:
             return token, args_str, self._DIRECTION_SENTINEL
 
-        # Korean → English mapping
+        # Direct handler lookup first (game-specific overrides take priority)
+        handler = self.cmd_handlers.get(token)
+        if handler:
+            return token, args_str, handler
+
+        # Korean → English mapping (fallback for aliases like 건강→score)
         eng = self.cmd_korean.get(token)
         if eng:
             handler = self.cmd_handlers.get(eng)
             if handler:
                 return eng, args_str, handler
-
-        # Direct handler lookup
-        handler = self.cmd_handlers.get(token)
-        if handler:
-            return token, args_str, handler
 
         return token, args_str, None
 
@@ -790,6 +804,48 @@ class Engine:
                             )
                             await self.do_look(follower.session, "")
 
+    async def _do_named_move(self, session: Session, exit_obj: Any) -> None:
+        """Move through a named exit (direction >= 6)."""
+        char = session.character
+        if not char:
+            return
+
+        room = self.world.get_room(char.room_vnum)
+        if not room:
+            return
+
+        dest = self.world.get_room(exit_obj.to_vnum)
+        if not dest:
+            await session.send_line("그쪽으로는 갈 수 없습니다.")
+            return
+
+        # Check door
+        if room.has_door(exit_obj.direction):
+            if room.is_door_closed(exit_obj.direction):
+                await session.send_line("문이 닫혀있습니다.")
+                return
+
+        kw = exit_obj.keywords or "어딘가"
+        is_sneaking = any(a.get("id") == 1001 for a in char.affects)
+
+        # Leave message
+        if not is_sneaking:
+            for other in room.characters:
+                if other is not char and other.session:
+                    await other.session.send_line(f"\r\n{char.name}이(가) {kw}(으)로 떠났습니다.")
+
+        # Move
+        self.world.char_to_room(char, exit_obj.to_vnum)
+
+        # Arrive message
+        if not is_sneaking:
+            for other in dest.characters:
+                if other is not char and other.session:
+                    await other.session.send_line(f"\r\n{char.name}이(가) 나타났습니다.")
+
+        # Show room
+        await self.do_look(session, "")
+
     # ── Position constants ────────────────────────────────────────
 
     # Position constants
@@ -925,6 +981,11 @@ class Engine:
 
     async def _mobile_activity(self) -> None:
         """Process NPC autonomous behavior — scavenger, movement, aggro, memory, helper, wimpy."""
+        # Plugin can override NPC AI
+        plugin = getattr(self, "_plugin", None)
+        if plugin and hasattr(plugin, "mobile_activity"):
+            await plugin.mobile_activity(self)
+            return
         for room in list(self.world.rooms.values()):
             for mob in list(room.characters):
                 if not mob.is_npc:

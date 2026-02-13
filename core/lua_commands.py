@@ -82,6 +82,15 @@ class CommandContext:
         for session in self._engine.sessions.values():
             self._messages.append((session, str(msg)))
 
+    def send_to_room(self, room_vnum: int, msg: str) -> None:
+        """Send message to all characters in a specific room."""
+        room = self._engine.world.get_room(int(room_vnum))
+        if not room:
+            return
+        for ch in room.characters:
+            if ch.session:
+                self._messages.append((ch.session, str(msg)))
+
     # ── Room / World queries ──────────────────────────────────────
 
     def get_room(self, vnum: int | None = None) -> Room | None:
@@ -488,12 +497,52 @@ class CommandContext:
     # ── Session helpers ───────────────────────────────────────────
 
     def get_player_data(self, key: str) -> Any:
-        """Get a value from player_data dict."""
-        return self._session.player_data.get(str(key))
+        """Get a value from player_data dict.
+        Converts Python dicts/lists to Lua tables for proper iteration.
+        Also handles JSON strings from asyncpg JSONB columns.
+        """
+        import json as _json
+        val = self._session.player_data.get(str(key))
+        if val is None:
+            return None
+        # asyncpg may return JSONB as string — try parsing
+        if isinstance(val, str):
+            try:
+                parsed = _json.loads(val)
+                if isinstance(parsed, (dict, list)):
+                    val = parsed
+            except (ValueError, TypeError):
+                pass
+        if isinstance(val, dict) and self._lua is not None:
+            return self._lua.table_from(val)
+        if isinstance(val, list) and self._lua is not None:
+            return self._lua.table_from(val)
+        return val
 
     def set_player_data(self, key: str, value: Any) -> None:
-        """Set a value in player_data dict."""
-        self._session.player_data[str(key)] = value
+        """Set a value in player_data dict.
+        Converts Lua tables back to Python dicts/lists.
+        """
+        self._session.player_data[str(key)] = self._lua_to_python(value)
+
+    def _lua_to_python(self, val: Any) -> Any:
+        """Convert Lua table back to Python dict or list."""
+        if val is None:
+            return val
+        if isinstance(val, (int, float, str, bool)):
+            return val
+        # Check if it's a Lua table (has items method from lupa)
+        if hasattr(val, "items"):
+            result = {}
+            for k, v in val.items():
+                result[self._lua_to_python(k)] = self._lua_to_python(v)
+            return result
+        if hasattr(val, "values"):
+            result = []
+            for v in val.values():
+                result.append(self._lua_to_python(v))
+            return result
+        return val
 
     def set_player_data_on(self, target: Any, key: str, value: Any) -> None:
         """Set a value in another character's player_data."""
@@ -644,9 +693,31 @@ class CommandContext:
         if target:
             target.hp -= int(amount)
 
+    def damage(self, target: Any, amount: int) -> None:
+        """Alias for deal_damage — convenience for Lua scripts."""
+        self.deal_damage(target, amount)
+
     def heal(self, target: Any, amount: int) -> None:
         if target:
             target.hp = min(target.max_hp, target.hp + int(amount))
+
+    def add_move(self, amount: int) -> None:
+        """Add (or subtract) move points to current character."""
+        char = self._session.character if self._session else None
+        if char:
+            char.move = max(0, min(char.max_move, char.move + int(amount)))
+
+    def add_hp(self, amount: int) -> None:
+        """Add (or subtract) HP to current character."""
+        char = self._session.character if self._session else None
+        if char:
+            char.hp = max(0, min(char.max_hp, char.hp + int(amount)))
+
+    def add_mana(self, amount: int) -> None:
+        """Add (or subtract) mana to current character."""
+        char = self._session.character if self._session else None
+        if char:
+            char.mana = max(0, min(char.max_mana, char.mana + int(amount)))
 
     # ── Spell affect system (spell_id key, matches spells.py) ───
 
@@ -684,15 +755,54 @@ class CommandContext:
             target.affects = [a for a in target.affects
                               if a.get("spell_id") != sid]
 
-    def get_skill_proficiency(self, char: Any, skill_id: int) -> int:
-        """Get skill proficiency for a character."""
-        if not char or not hasattr(char, "skills"):
+    def get_skill_proficiency(self, skill_or_char: Any, skill_id: Any = None) -> int:
+        """Get skill proficiency. Supports two call forms:
+        - ctx:get_skill_proficiency("bash") — current char, skill by name
+        - ctx:get_skill_proficiency(char, skill_id) — specific char, skill by id
+        """
+        if skill_id is not None:
+            # Legacy: (char, skill_id) form
+            char = skill_or_char
+            if not char or not hasattr(char, "skills"):
+                return 0
+            return char.skills.get(int(skill_id), 0)
+        # New: (skill_name) form — look up from current char's player skills
+        char = self._session.character if self._session else None
+        if not char:
             return 0
-        return char.skills.get(int(skill_id), 0)
+        name = str(skill_or_char).lower()
+        # Check player_data skills first (practiced skills)
+        if self._session and self._session.player_data:
+            pd_skills = self._session.player_data.get("skills", {})
+            if isinstance(pd_skills, dict) and name in pd_skills:
+                return int(pd_skills[name])
+        # Fall back to char.skills (mob protos use int keys)
+        if hasattr(char, "skills") and isinstance(char.skills, dict):
+            return char.skills.get(name, 0)
+        return 0
 
     def get_start_room(self) -> int:
         """Get the configured start room vnum."""
         return self._engine.config.get("world", {}).get("start_room", 3001)
+
+    def get_random_room_vnum(self) -> int:
+        """Get a random valid room vnum (no RNOTEL/dark/death rooms)."""
+        import random as _rnd
+        rooms = self._engine.world.rooms
+        if not rooms:
+            return self.get_start_room()
+        candidates = []
+        for vnum, room in rooms.items():
+            flags = room.proto.flags if room.proto else []
+            # Skip rooms with no_teleport, dark, harmful, etc.
+            skip_flags = {"no_teleport", "flag_4", "harmful", "flag_19",
+                          "killer_jail", "flag_28", "no_kill", "flag_2"}
+            if skip_flags & set(flags):
+                continue
+            candidates.append(vnum)
+        if not candidates:
+            return self.get_start_room()
+        return _rnd.choice(candidates)
 
     def move_char_to(self, char: Any, room_vnum: int) -> None:
         """Move any character to a room (not just ctx.char)."""
@@ -1092,6 +1202,29 @@ class CommandContext:
             return ext.to_vnum
         return None
 
+    def peek_exit_at(self, room_vnum: int, direction: str) -> int | None:
+        """Check exit in direction from a specific room (for BFS map)."""
+        room = self._engine.world.get_room(int(room_vnum))
+        if not room:
+            return None
+        dir_map = {
+            "north": 0, "east": 1, "south": 2, "west": 3, "up": 4, "down": 5,
+        }
+        d = dir_map.get(str(direction).lower())
+        if d is None:
+            return None
+        for ext in room.exits:
+            if ext.direction == d:
+                return ext.to_vnum
+        return None
+
+    def get_room_name(self, room_vnum: int) -> str:
+        """Get a room's name by vnum."""
+        room = self._engine.world.get_room(int(room_vnum))
+        if room:
+            return room.proto.name
+        return ""
+
     def get_room_chars(self, room_vnum: int) -> Any:
         """Get characters in a specific room as Lua table."""
         room = self._engine.world.get_room(int(room_vnum))
@@ -1148,6 +1281,193 @@ class CommandContext:
     def get_online_players(self) -> Any:
         """Alias for get_players — returns online player sessions."""
         return self.get_players()
+
+    # ── Spell Known (S_ISSET) system ──────────────────────────────
+
+    def knows_spell(self, spell_id: int) -> bool:
+        """Check if current player knows a spell (S_ISSET equivalent)."""
+        pd = self._session.player_data if self._session else {}
+        known = pd.get("spells_known", [])
+        if isinstance(known, str):
+            import json as _json
+            try:
+                known = _json.loads(known)
+            except (ValueError, TypeError):
+                known = []
+        return int(spell_id) in known
+
+    def learn_spell(self, spell_id: int) -> None:
+        """Teach current player a spell (S_SET equivalent)."""
+        pd = self._session.player_data if self._session else None
+        if not pd:
+            return
+        known = pd.get("spells_known", [])
+        if isinstance(known, str):
+            import json as _json
+            try:
+                known = _json.loads(known)
+            except (ValueError, TypeError):
+                known = []
+        sid = int(spell_id)
+        if sid not in known:
+            known.append(sid)
+        pd["spells_known"] = known
+
+    def learn_spell_for(self, target, spell_id: int) -> None:
+        """Teach a spell to another character (for teach command)."""
+        sess = getattr(target, "session", None)
+        if not sess:
+            return
+        pd = getattr(sess, "player_data", None)
+        if not pd or not isinstance(pd, dict):
+            return
+        known = pd.get("spells_known", [])
+        if isinstance(known, str):
+            import json as _json
+            try:
+                known = _json.loads(known)
+            except (ValueError, TypeError):
+                known = []
+        sid = int(spell_id)
+        if sid not in known:
+            known.append(sid)
+        pd["spells_known"] = known
+
+    def forget_spell(self, spell_id: int) -> None:
+        """Remove a spell from known list (S_CLR equivalent)."""
+        pd = self._session.player_data if self._session else None
+        if not pd:
+            return
+        known = pd.get("spells_known", [])
+        if isinstance(known, str):
+            import json as _json
+            try:
+                known = _json.loads(known)
+            except (ValueError, TypeError):
+                known = []
+        sid = int(spell_id)
+        if sid in known:
+            known.remove(sid)
+        pd["spells_known"] = known
+
+    # ── Cooldown (lasttime) system ─────────────────────────────────
+
+    def check_cooldown(self, slot: int) -> int:
+        """Check cooldown remaining seconds for a slot. Returns 0 if ready."""
+        import time as _time
+        pd = self._session.player_data if self._session else {}
+        cooldowns = pd.get("cooldowns", {})
+        if isinstance(cooldowns, str):
+            import json as _json
+            try:
+                cooldowns = _json.loads(cooldowns)
+            except (ValueError, TypeError):
+                cooldowns = {}
+        key = str(int(slot))
+        entry = cooldowns.get(key)
+        if not entry:
+            return 0
+        ltime = entry.get("ltime", 0)
+        interval = entry.get("interval", 0)
+        now = int(_time.time())
+        remaining = (ltime + interval) - now
+        return max(0, remaining)
+
+    def set_cooldown(self, slot: int, interval: int) -> None:
+        """Set cooldown for a slot with given interval in seconds."""
+        import time as _time
+        pd = self._session.player_data if self._session else None
+        if not pd:
+            return
+        cooldowns = pd.get("cooldowns", {})
+        if isinstance(cooldowns, str):
+            import json as _json
+            try:
+                cooldowns = _json.loads(cooldowns)
+            except (ValueError, TypeError):
+                cooldowns = {}
+        key = str(int(slot))
+        cooldowns[key] = {"ltime": int(_time.time()), "interval": int(interval)}
+        pd["cooldowns"] = cooldowns
+
+    def clear_cooldown(self, slot: int) -> None:
+        """Clear cooldown for a slot."""
+        pd = self._session.player_data if self._session else None
+        if not pd:
+            return
+        cooldowns = pd.get("cooldowns", {})
+        if isinstance(cooldowns, str):
+            import json as _json
+            try:
+                cooldowns = _json.loads(cooldowns)
+            except (ValueError, TypeError):
+                cooldowns = {}
+        cooldowns.pop(str(int(slot)), None)
+        pd["cooldowns"] = cooldowns
+
+    # ── Creature Flags system ──────────────────────────────────────
+
+    def has_flag(self, flag_id: int) -> bool:
+        """Check if current player has a creature flag (F_ISSET equivalent)."""
+        pd = self._session.player_data if self._session else {}
+        flags = pd.get("flags", [])
+        if isinstance(flags, str):
+            import json as _json
+            try:
+                flags = _json.loads(flags)
+            except (ValueError, TypeError):
+                flags = []
+        return int(flag_id) in flags
+
+    def set_flag(self, flag_id: int) -> None:
+        """Set a creature flag (F_SET equivalent)."""
+        pd = self._session.player_data if self._session else None
+        if not pd:
+            return
+        flags = pd.get("flags", [])
+        if isinstance(flags, str):
+            import json as _json
+            try:
+                flags = _json.loads(flags)
+            except (ValueError, TypeError):
+                flags = []
+        fid = int(flag_id)
+        if fid not in flags:
+            flags.append(fid)
+        pd["flags"] = flags
+
+    def clear_flag(self, flag_id: int) -> None:
+        """Clear a creature flag (F_CLR equivalent)."""
+        pd = self._session.player_data if self._session else None
+        if not pd:
+            return
+        flags = pd.get("flags", [])
+        if isinstance(flags, str):
+            import json as _json
+            try:
+                flags = _json.loads(flags)
+            except (ValueError, TypeError):
+                flags = []
+        fid = int(flag_id)
+        if fid in flags:
+            flags.remove(fid)
+        pd["flags"] = flags
+
+    def has_mob_flag(self, target: Any, flag_name: str) -> bool:
+        """Check if a mob has an act_flag by name (e.g., 'aggressive')."""
+        if not target or not hasattr(target, "proto"):
+            return False
+        return str(flag_name) in target.proto.act_flags
+
+    def has_room_flag(self, flag_name: str) -> bool:
+        """Check if current room has a flag by name."""
+        char = self._session.character if self._session else None
+        if not char:
+            return False
+        room = self._engine.world.get_room(char.room_vnum)
+        if not room:
+            return False
+        return str(flag_name) in room.proto.flags
 
     def get_toggles(self) -> Any:
         """Get player's toggle settings as dict."""
@@ -1284,6 +1604,12 @@ class HookContext(CommandContext):
         for ch in self._room.characters:
             if ch.session:
                 self._messages.append((ch.session, str(msg)))
+
+    def send_room(self, msg: str) -> None:
+        """Send message to all characters in the hook room."""
+        for ch in self._room.characters:
+            if ch.session:
+                self._messages.append((ch.session, f"\r\n{msg}"))
 
 
 # ── LuaCommandRuntime ────────────────────────────────────────────

@@ -63,10 +63,25 @@ EXP_TABLE: dict[int, int] = {
 }
 
 
-def exp_for_level(level: int) -> int:
-    """Get experience required to reach a given level."""
+def _exp_multiplier(class_id: int) -> int:
+    """Experience multiplier for advanced classes (from porting reference)."""
     c = _const()
-    return EXP_TABLE.get(min(level, c.MAX_MORTAL_LEVEL), 0)
+    if class_id >= c.CARETAKER:
+        return 25
+    if class_id >= c.INVINCIBLE:
+        return 5
+    return 1
+
+
+def exp_for_level(level: int, class_id: int = 0) -> int:
+    """Get experience required to reach a given level.
+
+    Advanced classes use multiplied exp tables:
+      Invincible: ×5, Caretaker+: ×25
+    """
+    c = _const()
+    base = EXP_TABLE.get(min(level, c.MAX_MORTAL_LEVEL), 0)
+    return base * _exp_multiplier(class_id)
 
 
 def check_level_up(char: MobInstance) -> bool:
@@ -75,18 +90,27 @@ def check_level_up(char: MobInstance) -> bool:
     c = _const()
     if char.level >= c.MAX_MORTAL_LEVEL:
         return False
-    needed = exp_for_level(char.level + 1)
+    needed = exp_for_level(char.level + 1, char.class_id)
     return char.experience >= needed
 
 
 async def do_level_up(char: MobInstance, send_fn=None) -> dict[str, int | str]:
-    """Perform level up — 3eyes style with stat cycling."""
+    """Perform level up — 3eyes style with stat cycling.
+
+    Advanced classes (Invincible+) use the same base stat cycling
+    but the exp requirement is already multiplied via exp_for_level().
+    """
     c = _const()
     if char.level >= c.MAX_MORTAL_LEVEL:
         return {}
 
     char.level = char.level + 1
-    cls = c.CLASS_STATS.get(char.class_id, c.CLASS_STATS[4])
+    # Advanced classes fall back to their base class stats for HP/MP per level
+    base_cls_id = char.class_id
+    if base_cls_id >= c.INVINCIBLE:
+        # Use Fighter stats as base for advanced classes (original behavior)
+        base_cls_id = c.FIGHTER
+    cls = c.CLASS_STATS.get(base_cls_id, c.CLASS_STATS[4])
 
     hp_gain = max(1, cls["hp_lv"])
     mp_gain = max(0, cls["mp_lv"])
@@ -102,7 +126,9 @@ async def do_level_up(char: MobInstance, send_fn=None) -> dict[str, int | str]:
     char.mana = char.max_mana
 
     # Stat cycling: level_cycle[class][level % 10]
-    cycle = c.LEVEL_CYCLE.get(char.class_id, c.LEVEL_CYCLE[4])
+    # Advanced classes use Fighter cycle
+    cycle_cls = char.class_id if char.class_id <= 8 else c.FIGHTER
+    cycle = c.LEVEL_CYCLE.get(cycle_cls, c.LEVEL_CYCLE[4])
     stat_key = cycle[(char.level - 1) % 10]
     stat_gained = ""
     if char.stats:
@@ -133,5 +159,5 @@ def exp_to_next(char: MobInstance) -> int:
     c = _const()
     if char.level >= c.MAX_MORTAL_LEVEL:
         return 0
-    needed = exp_for_level(char.level + 1)
+    needed = exp_for_level(char.level + 1, char.class_id)
     return max(0, needed - char.experience)

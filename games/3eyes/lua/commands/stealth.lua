@@ -1,28 +1,8 @@
--- stealth.lua — 3eyes thief/stealth commands (sneak, hide, pick, steal, backstab)
+-- stealth.lua — 3eyes 은신 명령어 (원본 cmdlist 기반)
+-- 원본: command3.c (hide/pick/steal/backstab)
 
-register_command("sneak", function(ctx, args)
-    local ch = ctx.char
-    -- Assassin(1), Thief(8) can sneak
-    if ch.class_id ~= 1 and ch.class_id ~= 8 then
-        ctx:send("암살자나 도적만 숨어 다닐 수 있습니다.")
-        return
-    end
-    if ctx:has_affect(ch, 1001) then
-        ctx:remove_affect(ch, 1001)
-        ctx:send("더 이상 소리를 죽이지 않습니다.")
-        return
-    end
-    local dex = te_stat(ch, "dex", 13)
-    local chance = 30 + dex * 2 + ch.level
-    if math.random(1, 100) <= chance then
-        ctx:apply_affect(ch, 1001, 3 + math.floor(ch.level / 5))
-        ctx:send("소리를 죽이며 움직입니다.")
-    else
-        ctx:send("발걸음 소리를 줄이지 못했습니다.")
-    end
-end, "숨어가")
-
-register_command("hide", function(ctx, args)
+-- ── 숨어 / 숨겨 (cmdno=26, hide) ─────────────────────────────
+local function do_hide(ctx, args)
     local ch = ctx.char
     if ch.class_id ~= 1 and ch.class_id ~= 8 then
         ctx:send("암살자나 도적만 숨을 수 있습니다.")
@@ -41,15 +21,18 @@ register_command("hide", function(ctx, args)
     else
         ctx:send("숨을 수 있는 곳을 찾지 못했습니다.")
     end
-end, "숨")
+end
 
-register_command("pick", function(ctx, args)
+register_command("숨어", do_hide)
+register_command("숨겨", function(ctx, args) ctx:call_command("숨어", args or "") end)
+
+-- ── 따 (cmdno=35, pick) ──────────────────────────────────────
+register_command("따", function(ctx, args)
     if not args or args == "" then
         ctx:send("무엇을 따시겠습니까?")
         return
     end
     local ch = ctx.char
-    -- Assassin(1), Thief(8) can pick
     if ch.class_id ~= 1 and ch.class_id ~= 8 then
         ctx:send("암살자나 도적만 잠금장치를 딸 수 있습니다.")
         return
@@ -62,9 +45,10 @@ register_command("pick", function(ctx, args)
     else
         ctx:send("잠금장치를 따는 데 실패했습니다.")
     end
-end, "따")
+end)
 
-register_command("steal", function(ctx, args)
+-- ── 훔쳐 (cmdno=36, steal) ───────────────────────────────────
+register_command("훔쳐", function(ctx, args)
     if not args or args == "" then
         ctx:send("누구에게서 무엇을 훔치시겠습니까?")
         return
@@ -76,7 +60,7 @@ register_command("steal", function(ctx, args)
     end
     local item_name, target_name = args:match("^(%S+)%s+(.+)$")
     if not item_name or not target_name then
-        ctx:send("사용법: steal <물건> <대상>")
+        ctx:send("사용법: 훔쳐 <물건> <대상>")
         return
     end
     local target = ctx:find_char(target_name)
@@ -101,15 +85,15 @@ register_command("steal", function(ctx, args)
         ctx:send("실패! " .. target.name .. "이(가) 당신을 발견했습니다!")
         ctx:start_combat(target)
     end
-end, "훔치")
+end)
 
-register_command("backstab", function(ctx, args)
+-- ── 기습 (cmdno=45, backstab) ─────────────────────────────────
+register_command("기습", function(ctx, args)
     if not args or args == "" then
         ctx:send("누구를 뒤치기하시겠습니까?")
         return
     end
     local ch = ctx.char
-    -- Assassin(1), Thief(8) can backstab
     if ch.class_id ~= 1 and ch.class_id ~= 8 then
         ctx:send("암살자나 도적만 뒤치기를 할 수 있습니다.")
         return
@@ -136,7 +120,6 @@ register_command("backstab", function(ctx, args)
     local chance = 20 + dex * 2 + ch.level - target.level
     if math.random(1, 100) <= chance then
         local dmg = math.max(1, ch.level * 2 + dex)
-        -- Critical multiplier for assassin
         if ch.class_id == 1 then
             dmg = dmg * math.random(3, 5)
         else
@@ -153,4 +136,4 @@ register_command("backstab", function(ctx, args)
         ctx:send("뒤치기에 실패했습니다!")
         ctx:start_combat(target)
     end
-end, "뒤치기")
+end)

@@ -1,8 +1,9 @@
-"""3eyes death system — exp penalty for players, proficiency gain for killers."""
+"""3eyes death system — exp penalty, proficiency gain, PK tracking, corpse decay."""
 
 from __future__ import annotations
 
 import importlib
+import time
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -153,20 +154,52 @@ async def handle_death(engine: Engine, victim: MobInstance,
                     )
     else:
         # ── Player death ─────────────────────────────────────
+        is_pk = killer is not None and not killer.is_npc
+
         if victim.session:
             await victim.session.send_line(
                 "\r\n{bright_red}당신은 죽었습니다!{reset}\r\n"
             )
 
             # Experience penalty: (current_level_exp - prev_level_exp) * 3/4
-            if killer is None or killer.is_npc:
-                cur_exp = lv.exp_for_level(victim.level)
-                prev_exp = lv.exp_for_level(max(1, victim.level - 1))
-                exp_loss = max(0, (cur_exp - prev_exp) * 3 // 4)
-                if exp_loss > 0:
-                    victim.experience = max(0, victim.experience - exp_loss)
-                    await victim.session.send_line(
-                        f"{{red}}경험치 -{exp_loss}{{reset}}"
+            # PK death: half penalty (kyk5.c)
+            cur_exp = lv.exp_for_level(victim.level)
+            prev_exp = lv.exp_for_level(max(1, victim.level - 1))
+            penalty_ratio = 3 if not is_pk else 1  # PvE 3/4, PvP 1/4
+            exp_loss = max(0, (cur_exp - prev_exp) * penalty_ratio // 4)
+            if exp_loss > 0:
+                victim.experience = max(0, victim.experience - exp_loss)
+                await victim.session.send_line(
+                    f"{{red}}경험치 -{exp_loss}{{reset}}"
+                )
+
+        # PK tracking (kyk5.c)
+        if is_pk:
+            # Killer PK kill count
+            if killer.session:
+                pd = killer.session.player_data
+                pk_kills = pd.get("pk_kills", 0) + 1
+                pd["pk_kills"] = pk_kills
+                await killer.session.send_line(
+                    f"{{bright_red}}PK 킬 카운트: {pk_kills}{{reset}}"
+                )
+                if pk_kills >= 10:
+                    await killer.session.send_line(
+                        "{bright_red}경고: 킬러 상태입니다! 자수(surrender)를 고려하세요.{reset}"
+                    )
+            # Victim PK death count
+            if victim.session:
+                pd = victim.session.player_data
+                pd["pk_deaths"] = pd.get("pk_deaths", 0) + 1
+                await victim.session.send_line(
+                    f"{{yellow}}{killer.name}에게 살해되었습니다.{{reset}}"
+                )
+            # Global PK announcement
+            for s in engine.sessions:
+                if hasattr(s, "send_line"):
+                    await s.send_line(
+                        f"{{bright_red}}[PK] {killer.name}이(가) "
+                        f"{victim.name}을(를) 살해했습니다!{{reset}}"
                     )
 
         # Respawn to spirit room (11971)
@@ -174,9 +207,13 @@ async def handle_death(engine: Engine, victim: MobInstance,
         if room and victim in room.characters:
             room.characters.remove(victim)
 
-        # Full HP, 10% MP recovery (PvE death)
-        victim.hp = victim.max_hp
-        victim.mana = max(1, victim.max_mana // 10)
+        # Full HP, 10% MP recovery (PvE death), PK: 50% HP/MP
+        if is_pk:
+            victim.hp = max(1, victim.max_hp // 2)
+            victim.mana = max(1, victim.max_mana // 4)
+        else:
+            victim.hp = victim.max_hp
+            victim.mana = max(1, victim.max_mana // 10)
         victim.position = 8  # POS_STANDING
         victim.room_vnum = start_room
 
@@ -188,6 +225,46 @@ async def handle_death(engine: Engine, victim: MobInstance,
                     "\r\n{yellow}죽음에서 벗어나 정신을 차립니다.{reset}\r\n"
                 )
                 await engine.do_look(victim.session, "")
+
+
+async def decay_corpses(engine: Engine) -> None:
+    """Tick-based corpse decay — removes corpses when timer reaches 0.
+
+    Called from engine tick. Each corpse has values["timer"] that decrements
+    every tick. When timer <= 0, corpse dissolves and remaining items drop to room.
+    """
+    world = engine.world
+    for room in list(world.rooms.values()):
+        for obj in list(room.objects):
+            vals = getattr(obj, "values", None)
+            if not vals or not isinstance(vals, dict):
+                continue
+            if not vals.get("corpse"):
+                continue
+            # Decrement timer
+            timer = vals.get("timer", 0)
+            timer -= 1
+            vals["timer"] = timer
+            if timer > 0:
+                continue
+            # Corpse decays: drop items to room
+            for item in list(getattr(obj, "contains", [])):
+                item.in_obj = None
+                item.room_vnum = room.vnum
+                room.objects.append(item)
+            if hasattr(obj, "contains"):
+                obj.contains.clear()
+            # Remove corpse
+            room.objects.remove(obj)
+            # Notify room
+            name = getattr(obj, "name", "시체")
+            if not name:
+                name = obj.proto.short_desc if obj.proto else "시체"
+            for ch in room.characters:
+                if ch.session:
+                    await ch.session.send_line(
+                        f"{{yellow}}{name}가 부패하여 사라집니다.{{reset}}"
+                    )
 
 
 def calculate_exp_gain(killer: MobInstance, victim: MobInstance) -> int:

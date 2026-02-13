@@ -1,0 +1,12 @@
+{blue}                                                                               {reset}
+이 화면은 머드내에서 언제라도 '{green}뉴스{reset}'라고 치면 나옵니다
+
+.텔넷서버 접속은 {red}3eye.xwow.net 4000{reset} 입니다.
+.제3의눈 홈페이지: {green}http://my.dreamwiz.com/dikafryo/{reset}
+
+{green}.사유지나 기타 건의사항은 매월 1일과 15일에 처리해드리겠습니다
+ 용무있으신 분은 {magenta}네피림{green}에게 편지 주세요{reset}
+
+.{white}서버 이전으로 접속이 되지 않았음을 사과드립니다.{reset}
+
+{blue}                                                                               {reset}

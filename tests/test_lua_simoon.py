@@ -158,21 +158,19 @@ class TestSimoonPlugin:
         assert "50" in prompt
         assert "100" in prompt
 
-    @pytest.mark.asyncio
-    async def test_regen_char(self):
+    def test_regen_char(self):
         from games.simoon.game import SimoonPlugin
         p = SimoonPlugin()
         ch = _player(hp=50, max_hp=200, mana=30, class_id=0)
         ch.max_mana = 200
         ch.move = 50
         ch.max_move = 100
-        await p.regen_char(ch)
+        p.regen_char(None, ch)
         assert ch.hp > 50
         assert ch.mana > 30
         assert ch.move > 50
 
-    @pytest.mark.asyncio
-    async def test_regen_caster_bonus(self):
+    def test_regen_caster_bonus(self):
         from games.simoon.game import SimoonPlugin
         p = SimoonPlugin()
         # Mage (caster) gets better mana regen
@@ -184,8 +182,8 @@ class TestSimoonPlugin:
         ch_war.max_mana = 200
         ch_war.move = 50
         ch_war.max_move = 100
-        await p.regen_char(ch_mage)
-        await p.regen_char(ch_war)
+        p.regen_char(None, ch_mage)
+        p.regen_char(None, ch_war)
         assert ch_mage.mana > ch_war.mana  # Caster mana regen > warrior
 
 

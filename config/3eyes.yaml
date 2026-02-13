@@ -1,5 +1,5 @@
 game: 3eyes
-name: "검제3의 검눈 (3eyes)"
+name: "제3의 눈 (3eyes)"
 
 network:
   telnet_host: "0.0.0.0"

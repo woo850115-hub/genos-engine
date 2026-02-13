@@ -176,6 +176,10 @@ class Session:
         # Show room
         await self.engine.do_look(self, "")
 
+    async def disconnect(self) -> None:
+        """Public disconnect — login states and commands call this."""
+        await self._disconnect()
+
     async def _disconnect(self) -> None:
         if self.character:
             await self.save_character()

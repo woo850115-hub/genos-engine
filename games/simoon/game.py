@@ -78,7 +78,7 @@ class SimoonPlugin:
             base += f"\n[{enemy.name}: {condition}] "
         return base
 
-    async def regen_char(self, char: Any) -> None:
+    def regen_char(self, engine: Any, char: Any) -> None:
         """Simoon regen — class-based HP/mana recovery per tick."""
         from games.simoon.constants import CASTER_CLASSES
         # Base regen: 8% HP, 8% mana, 8% move

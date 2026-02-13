@@ -1,0 +1,12 @@
+
+                     {bright_green}
+                              {bright_yellow}   제 3 의 눈  {reset}                                    {blue}A{magenta}N{blue}G{bright_yellow}E{bright_cyan}L{reset}{bright_white}{reset}
+
+                               1.제3의눈으로..
+                               2.
+                               3.비밀번호변경
+                               {bright_cyan}4.비밀번호분실{bright_white}
+                               5.캐릭터삭제
+
+                               6.종료
+

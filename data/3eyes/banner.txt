@@ -1,0 +1,34 @@
+
+{bg_blue}                                                                                {reset}
+{bg_blue}                                                                                {reset}
+{bg_blue}                                                                                {reset}
+   {bright_green}Ver 3.xx{reset}                     {bright_cyan}제 3의 눈{reset}
+
+        {magenta}                                          _   __,----'~~~~~~~~~`-----.{reset}
+        {bright_black}                                   .  .    `//====-              ____,{reset}
+        {white}             -.            \_|// .   /||\\  `~~~~`---.___./    {reset}
+        {bright_cyan}       ______-==.       _-~o  `\/    |||  \\           _,'`    {reset}
+        {bright_blue}  __,--'   ,=='||\=_    ;_,_,/ _-'|-   |`\   \\        ,'     {reset}
+        {bright_yellow}   _-'      ,='    | \\`.    '',/~7  /-   /  ||   `\.     /  {reset}
+        {bright_green} .'       ,'       |  \\  \_  "  /  /-   /   ||      \   /   {reset}
+        {blue}/ _____  /         |     \\.`-_/  /|- _/   ,||       \ /     {reset}
+        {bright_magenta},-'     `-|--'~~`--_ \     `==-/  `| \'--===-'       _/`  {reset}
+        {bright_cyan}          '         `-|      /|    )-'\~'      _,--"'       {reset}
+        {bright_white}                      '-~^\_/ |    |   `\_   ,^             /\{reset}
+        {bright_cyan}                           /  \     \__   \/~               `\__{reset}
+        {bright_cyan}                       _,-' _/'\ ,-'~____-'`-/                 ``===\{reset}
+        {blue}                      ((->/'    \|||' `.     `\.  ,                _||{reset}
+        {bright_green}                                 \_     `\      `~---|__i__i__\--~'_/{reset}
+        {bright_yellow}                                __-^-_    `)  \-.______________,-~'{reset}
+        {bright_blue}                               ///,-'~`__--^-  |-------~~~~^'{reset}
+        {cyan}                                      ///,--~`-\{reset}
+
+{bright_cyan}
+   텔넷 접속 서버{reset}
+
+   {blue}3eye.xwow.net 4000{reset}
+
+   {cyan}http://any.to/3eye{reset}
+   {cyan}http://sengame.com{reset}
+   {cyan}email:reena@hanmail.net{reset}
+

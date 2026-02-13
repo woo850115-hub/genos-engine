@@ -242,6 +242,9 @@ CREATE TABLE IF NOT EXISTS players (
     room_vnum     INTEGER NOT NULL DEFAULT 0,
     org_id        INTEGER NOT NULL DEFAULT 0,
     org_rank      INTEGER NOT NULL DEFAULT 0,
+    practices     INTEGER NOT NULL DEFAULT 0,
+    toggles       JSONB NOT NULL DEFAULT '{}',
+    prompt        TEXT NOT NULL DEFAULT '',
     ext           JSONB NOT NULL DEFAULT '{}',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_login    TIMESTAMPTZ

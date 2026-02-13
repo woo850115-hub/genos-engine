@@ -7,6 +7,7 @@ This file only contains plugin protocol methods required by the engine.
 from __future__ import annotations
 
 import importlib
+import random
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -77,11 +78,123 @@ class ThreeEyesPlugin:
             base += f"\n[{enemy.name}: {condition}] "
         return base
 
-    async def regen_char(self, char: Any) -> None:
+    async def on_tick(self, engine: Engine) -> None:
+        """3eyes per-tick hook — corpse decay."""
+        death = _import("combat.death")
+        await death.decay_corpses(engine)
+
+    async def mobile_activity(self, engine: Engine) -> None:
+        """3eyes NPC AI — MAGGRE auto-aggro with lowest-piety targeting.
+
+        From source: update.c update_crt() — MAGGRE attacks lowest-piety player,
+        DEX check: target.dex > mob.dex → 30% skip.
+        """
+        c = _import("constants")
+        for room in list(engine.world.rooms.values()):
+            for mob in list(room.characters):
+                if not mob.is_npc or mob.fighting:
+                    continue
+                flags = mob.proto.act_flags
+                # Check MAGGRE flag (numeric 0 or text "aggressive"/"flag_0")
+                is_aggr = (
+                    "aggressive" in flags
+                    or "flag_0" in flags
+                    or 0 in flags
+                    or "0" in flags
+                )
+                if not is_aggr:
+                    continue
+                # Find lowest-level player in room (proxy for lowest piety)
+                victims = [ch for ch in room.characters if not ch.is_npc and ch.hp > 0]
+                if not victims:
+                    continue
+                target = min(victims, key=lambda v: v.level)
+                # DEX check: if target.dex > mob.dex → 30% skip (update.c:941)
+                tgt_dex = target.stats.get("dex", 13) if target.stats else 13
+                mob_dex = mob.stats.get("dex", 13) if mob.stats else 13
+                if tgt_dex > mob_dex and random.randint(1, 10) < 4:
+                    continue
+                # Start combat
+                if target.session:
+                    await target.session.send_line(
+                        f"\r\n{{bright_white}}{mob.name}이(가) 갑자기 당신에게 공격을 해옵니다{{reset}}"
+                    )
+                for other in room.characters:
+                    if other is not target and other.session:
+                        await other.session.send_line(
+                            f"\r\n{mob.name}이(가) {target.name}에게 공격을 시작합니다."
+                        )
+                mob.fighting = target
+                mob.position = 7  # POS_FIGHTING
+                if not target.fighting:
+                    target.fighting = mob
+                    target.position = 7
+
+    async def room_tick_effects(self, engine: Engine) -> None:
+        """3eyes room tick effects — RHEALR/RPHARM/RPPOIS/RPMPDR.
+
+        From source: update.c update_room() — per-tick room flag effects.
+        """
+        c = _import("constants")
+        for room in list(engine.world.rooms.values()):
+            if not room.characters:
+                continue
+            flags = room.flags if room.flags else []
+            has_heal = (
+                "flag_5" in flags or c.RHEALR in flags
+                or "healing" in flags or "heal" in flags
+            )
+            has_harm = (
+                "flag_19" in flags or c.RPHARM in flags or "harmful" in flags
+            )
+            has_poison = (
+                "flag_20" in flags or c.RPPOIS in flags or "poison" in flags
+            )
+            has_mpdrain = (
+                "flag_21" in flags or c.RPMPDR in flags or "mpdrain" in flags
+            )
+            if not (has_heal or has_harm or has_poison or has_mpdrain):
+                continue
+            for ch in list(room.characters):
+                if ch.is_npc or ch.hp <= 0:
+                    continue
+                if has_heal:
+                    heal = random.randint(5, 15)
+                    ch.hp = min(ch.max_hp, ch.hp + heal)
+                    ch.mana = min(ch.max_mana, ch.mana + max(1, heal // 2))
+                if has_harm:
+                    dmg = random.randint(3, 10)
+                    ch.hp = max(1, ch.hp - dmg)
+                    if ch.session:
+                        await ch.session.send_line(
+                            "\r\n{red}이 방의 유독한 기운이 당신을 해칩니다! "
+                            f"(-{dmg} HP){{reset}}"
+                        )
+                if has_poison and not ch.fighting:
+                    # 20% chance to poison per tick
+                    if random.randint(1, 5) == 1:
+                        pf = ch.flags if hasattr(ch, "flags") and ch.flags else []
+                        already = (c.PPOISN in pf or "flag_12" in pf)
+                        if not already and ch.session:
+                            if hasattr(ch, "flags") and isinstance(ch.flags, list):
+                                ch.flags.append(c.PPOISN)
+                            await ch.session.send_line(
+                                "\r\n{green}이 방의 독기에 중독되었습니다!{reset}"
+                            )
+                if has_mpdrain:
+                    drain = random.randint(5, 15)
+                    ch.mana = max(0, ch.mana - drain)
+                    if ch.session:
+                        await ch.session.send_line(
+                            f"\r\n{{yellow}}이 방의 기운이 마력을 흡수합니다! (-{drain} MP){{reset}}"
+                        )
+
+    def regen_char(self, engine: Any, char: Any) -> None:
         """3eyes regen — class-based HP/MP recovery per tick.
 
         From source: base 5 + CON bonus per 5s tick.
         Barbarian +2 HP, Mage +2 MP.
+        RHEALR bonus is handled in room_tick_effects().
         """
         c = _import("constants")
         con = char.stats.get("con", 13) if char.stats else 13
@@ -96,6 +209,10 @@ class ThreeEyesPlugin:
             hp_regen += 2
         # Mage +2 MP
         if char.class_id == 5:
+            mp_regen += 2
+        # Invincible+ gets base +3 (kyk3.c regen bonus)
+        if char.class_id and char.class_id >= c.INVINCIBLE:
+            hp_regen += 3
             mp_regen += 2
 
         char.hp = min(char.max_hp, char.hp + hp_regen)
