@@ -116,7 +116,7 @@ class Session:
             damage_dice="1d4+0",
             gold=pd.get("gold", 0), experience=pd.get("experience", 0),
             alignment=pd.get("alignment", 0), sex=pd.get("sex", 0),
-            position=8, class_id=pd.get("class_id", 0), race_id=0,
+            position=8, class_id=pd.get("class_id", 0), race_id=pd.get("race_id", 0),
             act_flags=[], aff_flags=[], stats={}, skills={},
             scripts=[], ext={},
         )
@@ -128,6 +128,7 @@ class Session:
             gold=pd.get("gold", 0),
             experience=pd.get("experience", 0),
             class_id=pd.get("class_id", 0),
+            race_id=pd.get("race_id", 0),
             alignment=pd.get("alignment", 0),
             sex=pd.get("sex", 0),
             player_id=pd.get("id"), player_name=pd["name"],
