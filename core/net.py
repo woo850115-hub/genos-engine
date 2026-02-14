@@ -248,6 +248,12 @@ class TelnetServer:
             # Start read loop in background
             read_task = asyncio.create_task(conn.read_loop())
 
+            # Allow client to complete its telnet negotiation before
+            # sending the banner.  PuTTY buffers received data until
+            # the initial option exchange finishes; without this pause
+            # the banner arrives during negotiation and is never shown.
+            await asyncio.sleep(0.15)
+
             # Hand off to session manager
             await self._on_connect(conn)
 
